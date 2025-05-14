@@ -247,7 +247,7 @@ class Moment:
             sub_matrix_student = mean_att_student[batch_idx, idx_row]  # [B, K]
 
             # Distillation loss 
-            layer_loss = F.mse_loss(sub_matrix_student, sub_matrix_teacher.detach())
+            layer_loss = F.mse_loss(sub_matrix_student, sub_matrix_teacher.detach(), reduction = 'sum')
             total_loss += layer_loss
             actual_layers_processed += 1
 
