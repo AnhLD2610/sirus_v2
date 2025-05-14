@@ -358,12 +358,12 @@ class Manager(object):
 
                     loss3 = triplet(hidden, rep_des,  cluster_centroids) + triplet(hidden, cluster_centroids, nearest_cluster_centroids)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + loss4
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + 0.1*loss4
 
                 else:
                     loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2  + loss4 
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2  + 0.1*loss4 
          
                 loss.backward()
                 optimizer.step()
@@ -578,32 +578,32 @@ class Manager(object):
             # Train current task
             training_data_initialize = []
 
-            # if step > 0:
-            #     relations = list(set(seen_relations) - set(current_relations))
-            #     for rel in relations:
-            #         training_data_initialize += memory_samples[rel]            
+            if step > 0:
+                relations = list(set(seen_relations) - set(current_relations))
+                for rel in relations:
+                    training_data_initialize += memory_samples[rel]            
 
             for rel in current_relations:
                 training_data_initialize += training_data[rel]
             self.moment.init_moment(encoder, training_data_initialize, is_memory=False)
             encoder_pre = copy.deepcopy(encoder)
-            # if step>0:
-            #     self.train_model_with_distil(encoder, encoder_pre, training_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=False)
+            if step>0:
+                self.train_model_with_distil(encoder, encoder_pre, training_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=False)
 
-            # else:
-            self.train_model(encoder, training_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=False)
+            else:
+                self.train_model(encoder, training_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=False)
 
             # Select memory samples
             for rel in current_relations:
                 memory_samples[rel], _ = self.select_memory(encoder, training_data[rel])
             
-            if step > 0:
-                memory_data_initialize = []
-                for rel in seen_relations:
-                    memory_data_initialize += memory_samples[rel]
-                memory_data_initialize += data_generation
-                self.moment.init_moment(encoder, memory_data_initialize, is_memory=True) 
-                self.train_model_with_distil(encoder, encoder_pre, memory_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=True)
+            # if step > 0:
+            #     memory_data_initialize = []
+            #     for rel in seen_relations:
+            #         memory_data_initialize += memory_samples[rel]
+            #     memory_data_initialize += data_generation
+            #     self.moment.init_moment(encoder, memory_data_initialize, is_memory=True) 
+            #     self.train_model_with_distil(encoder, encoder_pre, memory_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=True)
 
             # Update proto
             seen_proto = []  
