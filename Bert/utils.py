@@ -235,7 +235,9 @@ class Moment:
             mean_att_student = att_student_layer.mean(dim=1)
 
             # Shape: [B, N]
-            token_importance_scores = mean_att_teacher.sum(dim=1) 
+            # token_importance_scores = mean_att_teacher.sum(dim=1) 
+            token_importance_scores = mean_att_student.sum(dim=1) 
+
 
             # top k 
             _, top_k_indices = torch.topk(token_importance_scores, effective_k, dim=1, sorted=True)
