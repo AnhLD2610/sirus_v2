@@ -358,14 +358,14 @@ class Manager(object):
 
                     loss3 = triplet(hidden, rep_des,  cluster_centroids) + triplet(hidden, cluster_centroids, nearest_cluster_centroids)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + 0.1*loss4
-                    print(loss4)
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + 2*loss4
+                    # print(loss4)
                 else:
                     loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2  + 0.1*loss4 
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2  + 2*loss4 
 
-                    print(loss4)
+                    # print(loss4)
          
                 loss.backward()
                 optimizer.step()
