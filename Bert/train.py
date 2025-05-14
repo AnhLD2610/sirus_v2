@@ -358,12 +358,12 @@ class Manager(object):
 
                     loss3 = triplet(hidden, rep_des,  cluster_centroids) + triplet(hidden, cluster_centroids, nearest_cluster_centroids)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + 0.1*loss4
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + loss4
 
                 else:
                     loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2  + 0.1*loss4 
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2  + loss4 
          
                 loss.backward()
                 optimizer.step()
@@ -680,7 +680,7 @@ if __name__ == '__main__':
     parser.add_argument("--lambda_3", default=0.25, type=float)
     parser.add_argument("--temperature", default=0.01, type=float)
     parser.add_argument("--distance_threshold", default=0.1, type=float)
-    parser.add_argument("--top_k", default=5, type=int)
+    parser.add_argument("--top_k", default=20, type=int)
     # Tacred
     # parser.add_argument("--task_name", default="Tacred", type=str)
     # parser.add_argument("--num_k", default=5, type=int)
