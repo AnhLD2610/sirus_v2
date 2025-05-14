@@ -235,8 +235,8 @@ class Moment:
             mean_att_student = att_student_layer.mean(dim=1)
 
             # Shape: [B, N]
-            # token_importance_scores = mean_att_teacher.sum(dim=1) 
-            token_importance_scores = mean_att_student.sum(dim=1) 
+            token_importance_scores = mean_att_teacher.sum(dim=1) 
+            # token_importance_scores = mean_att_student.sum(dim=1) 
 
 
             # top k 
@@ -252,6 +252,7 @@ class Moment:
             layer_loss = F.mse_loss(sub_matrix_student, sub_matrix_teacher.detach(), reduction = 'sum')
             total_loss += layer_loss
             actual_layers_processed += 1
+        
 
         return total_loss / actual_layers_processed
 
