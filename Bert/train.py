@@ -295,6 +295,35 @@ class Manager(object):
                     hidden_pre, attention_pre = encoder_pre(instance) # b, dim
                     rep_des_pre, attention_des_pre = encoder_pre(batch_instance, is_des = True) # b, dim
 
+                # calculate cosine bettween hidden and hidden_pre => b, dim * b,dim = d*b 
+                # if in that symetric  matricx have value > 0.5 => 1, < 0.5 => 0
+                #     make a output mask  that tensor shape B ( include only 0,1 )
+                # multiply mask wwith attention in loss 4  to distil only on example have maks 1 
+                # loss4 = self.moment.distillation_loss_att(attention_des_pre, attention_des , 10) + self.moment.distillation_loss_att(attention_pre, attention, 10)
+             
+
+                
+                sim = F.cosine_similarity(hidden, hidden_pre, dim=1)  # [B]
+
+               
+                mask = (sim > 0.8).float()   # [B]
+               
+                mask_att = mask.view(-1, 1, 1, 1)  # [B,1,1,1]
+
+                attention_masked     = attention     * mask_att  # [B, H, L, L]
+                attention_pre_masked= attention_pre* mask_att
+                attention_des_masked    = attention_des     * mask_att
+                attention_des_pre_masked = attention_des_pre* mask_att
+            
+                loss_att     = self.moment.distillation_loss_att(attention_pre_masked, attention_masked,     temp=10)  # [B]
+                loss_att_des = self.moment.distillation_loss_att(attention_des_pre_masked, attention_des_masked, temp=10)  # [B]
+
+                eps = 1e-6
+                num_selected = mask.sum().clamp(min=eps)
+
+                loss4 = loss_att.sum() / num_selected + loss_att_des.sum() / num_selected
+
+
                 with torch.no_grad():
                     rep_seen_des = []
                     for i2 in range(len(list_seen_des)):
@@ -358,12 +387,12 @@ class Manager(object):
 
                     loss3 = triplet(hidden, rep_des,  cluster_centroids) + triplet(hidden, cluster_centroids, nearest_cluster_centroids)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + 0.01*loss4
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + loss4
                     # print(loss4)
                 else:
                     loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2  + 0.01*loss4 
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2  + loss4 
 
                     # print(loss4)
          
