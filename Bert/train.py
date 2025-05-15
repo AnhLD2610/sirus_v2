@@ -306,9 +306,10 @@ class Manager(object):
                 sim = F.cosine_similarity(hidden, hidden_pre, dim=1)  # [B]
 
                
-                mask = (sim > 0.8).float()   # [B]
+                mask = sim > 0.8                                # [B], dtype=torch.bool
+                
                
-                mask_att = mask.view(-1, 1, 1, 1)  # [B,1,1,1]
+                mask_att = mask.unsqueeze(1).unsqueeze(2).unsqueeze(3) # [B,1,1,1]
 
                 attention_masked     = attention     * mask_att  # [B, H, L, L]
                 attention_pre_masked= attention_pre* mask_att
@@ -318,8 +319,9 @@ class Manager(object):
                 loss_att     = self.moment.distillation_loss_att(attention_pre_masked, attention_masked,     temp=10)  # [B]
                 loss_att_des = self.moment.distillation_loss_att(attention_des_pre_masked, attention_des_masked, temp=10)  # [B]
 
-                eps = 1e-6
-                num_selected = mask.sum().clamp(min=eps)
+
+                # eps = 1e-6
+                # num_selected = mask.sum().clamp(min=eps)
 
                 loss4 = loss_att + loss_att_des
 
