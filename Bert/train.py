@@ -625,7 +625,10 @@ class Manager(object):
             if step > 0:
                 memory_data_initialize = []
                 for rel in seen_relations:
-                    memory_data_initialize += memory_samples[rel]
+                    try: 
+                        memory_data_initialize += memory_samples[rel]
+                    except:
+                        continue
                 memory_data_initialize += data_generation
                 self.moment.init_moment(encoder, memory_data_initialize, is_memory=True) 
                 self.train_model_with_distil(encoder, encoder_pre, memory_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=True)
