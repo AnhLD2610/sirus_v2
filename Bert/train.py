@@ -295,31 +295,27 @@ class Manager(object):
                     hidden_pre, attention_pre = encoder_pre(instance) # b, dim
                     rep_des_pre, attention_des_pre = encoder_pre(batch_instance, is_des = True) # b, dim
 
-                # calculate cosine bettween hidden and hidden_pre => b, dim * b,dim = d*b 
-                # if in that symetric  matricx have value > 0.5 => 1, < 0.5 => 0
-                #     make a output mask  that tensor shape B ( include only 0,1 )
-                # multiply mask wwith attention in loss 4  to distil only on example have maks 1 
                 # loss4 = self.moment.distillation_loss_att(attention_des_pre, attention_des , 10) + self.moment.distillation_loss_att(attention_pre, attention, 10)
              
 
                 
-                sim  = F.cosine_similarity(hidden, hidden_pre, dim=1)  # [B]
-                mask = (sim > 0.5)                                     # [B], torch.bool or byte tensor
+                # sim  = F.cosine_similarity(hidden, hidden_pre, dim=1)  # [B]
+                # mask = (sim > 0.5)                                     # [B], torch.bool or byte tensor
 
-                loss_att     = self.moment.distillation_loss_att(
-                    attention_teacher_layers=attention_pre, 
-                    attention_student_layers=attention, 
-                    top_k_val=10,
-                    mask=mask
-                )  
+                # loss_att     = self.moment.distillation_loss_att(
+                #     attention_teacher_layers=attention_pre, 
+                #     attention_student_layers=attention, 
+                #     top_k_val=10,
+                #     mask=mask
+                # )  
 
-                loss_att_des = self.moment.distillation_loss_att(
-                    attention_teacher_layers=attention_des_pre, 
-                    attention_student_layers=attention_des, 
-                    top_k_val=10,
-                    mask=mask
-                )  
-                loss4 = loss_att + loss_att_des
+                # loss_att_des = self.moment.distillation_loss_att(
+                #     attention_teacher_layers=attention_des_pre, 
+                #     attention_student_layers=attention_des, 
+                #     top_k_val=10,
+                #     mask=mask
+                # )  
+                # loss4 = loss_att + loss_att_des
 
 
                 with torch.no_grad():
@@ -351,7 +347,7 @@ class Manager(object):
 
                 loss2 = self.moment.mutual_information_loss_cluster(hidden, rep_des, labels, temperature=args.temperature,relation_2_cluster=relation_2_cluster)  # Recompute loss2
 
-                # loss4 = self.moment.distillation_loss_att(attention_des_pre, attention_des , 10) + self.moment.distillation_loss_att(attention_pre, attention, 10)
+                loss4 = self.moment.distillation_loss_att(attention_des_pre, attention_des , 10) + self.moment.distillation_loss_att(attention_pre, attention, 10)
                     
                 cluster_centroids = []
 
@@ -607,10 +603,10 @@ class Manager(object):
             # Train current task
             training_data_initialize = []
 
-            if step > 0:
-                relations = list(set(seen_relations) - set(current_relations))
-                for rel in relations:
-                    training_data_initialize += memory_samples[rel]            
+            # if step > 0:
+            #     relations = list(set(seen_relations) - set(current_relations))
+            #     for rel in relations:
+            #         training_data_initialize += memory_samples[rel]            
 
             for rel in current_relations:
                 training_data_initialize += training_data[rel]
@@ -622,17 +618,30 @@ class Manager(object):
             else:
                 self.train_model(encoder, training_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=False)
 
+            # # Select memory samples
+            # for rel in current_relations:
+            #     memory_samples[rel], _ = self.select_memory(encoder, training_data[rel])
+            
+            if step > 0:
+                memory_data_initialize = []
+                for rel in seen_relations:
+                    memory_data_initialize += memory_samples[rel]
+                memory_data_initialize += data_generation
+                self.moment.init_moment(encoder, memory_data_initialize, is_memory=True) 
+                self.train_model_with_distil(encoder, encoder_pre, memory_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=True)
+
             # Select memory samples
             for rel in current_relations:
                 memory_samples[rel], _ = self.select_memory(encoder, training_data[rel])
-            
-            # if step > 0:
-            #     memory_data_initialize = []
-            #     for rel in seen_relations:
-            #         memory_data_initialize += memory_samples[rel]
-            #     memory_data_initialize += data_generation
-            #     self.moment.init_moment(encoder, memory_data_initialize, is_memory=True) 
-            #     self.train_model_with_distil(encoder, encoder_pre, memory_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=True)
+
+            if step > 0:
+                memory_data_initialize = []
+                for rel in seen_relations:
+                    memory_data_initialize += memory_samples[rel]
+                memory_data_initialize += data_generation
+                self.moment.init_moment(encoder, memory_data_initialize, is_memory=True) 
+                self.train_model(encoder, memory_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=True)
+
 
             # Update proto
             seen_proto = []  
