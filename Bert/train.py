@@ -321,7 +321,7 @@ class Manager(object):
                 eps = 1e-6
                 num_selected = mask.sum().clamp(min=eps)
 
-                loss4 = loss_att.sum() / num_selected + loss_att_des.sum() / num_selected
+                loss4 = loss_att + loss_att_des
 
 
                 with torch.no_grad():
@@ -353,7 +353,7 @@ class Manager(object):
 
                 loss2 = self.moment.mutual_information_loss_cluster(hidden, rep_des, labels, temperature=args.temperature,relation_2_cluster=relation_2_cluster)  # Recompute loss2
 
-                loss4 = self.moment.distillation_loss_att(attention_des_pre, attention_des , 10) + self.moment.distillation_loss_att(attention_pre, attention, 10)
+                # loss4 = self.moment.distillation_loss_att(attention_des_pre, attention_des , 10) + self.moment.distillation_loss_att(attention_pre, attention, 10)
                     
                 cluster_centroids = []
 
