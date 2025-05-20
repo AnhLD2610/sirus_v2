@@ -244,10 +244,14 @@ class Moment:
 
             # Mask entire rows: expand mask to [B, 1]
             mask_row = mask.unsqueeze(1)          # [B, 1]
-       
-            sub_t = sub_t * mask_row
+
+            # print(mask_row)
+            # print(mask_row.shape)
+            # print(sub_t.shape)
+            # print(sub_t)
+            sub_t = sub_t * mask_row.unsqueeze(-1)
             # sub_t = sub_t * mask_row
-            sub_s = sub_s * mask_row
+            sub_s = sub_s * mask_row.unsqueeze(-1)
 
             # Compute MSE loss over all entries; zeros for masked rows
             layer_loss = F.mse_loss(sub_s, sub_t.detach(), reduction='sum')
