@@ -297,25 +297,24 @@ class Manager(object):
 
                 # loss4 = self.moment.distillation_loss_att(attention_des_pre, attention_des , 10) + self.moment.distillation_loss_att(attention_pre, attention, 10)
              
-
                 
-                # sim  = F.cosine_similarity(hidden, hidden_pre, dim=1)  # [B]
-                # mask = (sim > 0.5)                                     # [B], torch.bool or byte tensor
+                sim  = F.cosine_similarity(hidden_pre, rep_des_pre, dim=1)  # [B]
+                mask = (sim > 0.6)                                     # [B], torch.bool or byte tensor
 
-                # loss_att     = self.moment.distillation_loss_att(
-                #     attention_teacher_layers=attention_pre, 
-                #     attention_student_layers=attention, 
-                #     top_k_val=10,
-                #     mask=mask
-                # )  
+                loss_att     = self.moment.distillation_loss_att(
+                    attention_teacher_layers=attention_pre, 
+                    attention_student_layers=attention, 
+                    top_k_val=10,
+                    mask=mask
+                )  
 
-                # loss_att_des = self.moment.distillation_loss_att(
-                #     attention_teacher_layers=attention_des_pre, 
-                #     attention_student_layers=attention_des, 
-                #     top_k_val=10,
-                #     mask=mask
-                # )  
-                # loss4 = loss_att + loss_att_des
+                loss_att_des = self.moment.distillation_loss_att(
+                    attention_teacher_layers=attention_des_pre, 
+                    attention_student_layers=attention_des, 
+                    top_k_val=10,
+                    mask=mask
+                )  
+                loss4 = loss_att + loss_att_des
 
 
                 with torch.no_grad():
