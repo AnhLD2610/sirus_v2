@@ -299,10 +299,10 @@ class Manager(object):
              
                 
                 sim  = F.cosine_similarity(hidden_pre, rep_des_pre, dim=1)  # [B]
-                sim = (sim+1)/2
-                mask = (sim > 0.6)                                     # [B], torch.bool or byte tensor
+                sim = (sim + 1.0)/2
+                mask = (sim > 0.7)                                     # [B], torch.bool or byte tensor
 
-                loss_att     = self.moment.distillation_loss_att(
+                loss_att = self.moment.distillation_loss_att(
                     attention_teacher_layers=attention_pre, 
                     attention_student_layers=attention, 
                     top_k_val=10,
