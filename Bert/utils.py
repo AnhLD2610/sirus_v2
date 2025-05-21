@@ -254,7 +254,11 @@ class Moment:
             sub_s = sub_s * mask_row.unsqueeze(-1)
 
             # Compute MSE loss over all entries; zeros for masked rows
+            sub_s = F.normalize(sub_s, dim=-1)
+            sub_t = F.normalize(sub_t, dim=-1)
+
             layer_loss = F.mse_loss(sub_s, sub_t.detach(), reduction='mean')
+
             total_loss += layer_loss
 
     
