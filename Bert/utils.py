@@ -203,116 +203,113 @@ class Moment:
 
         return infoNCE_loss
     
-    # def kl_loss():
 
-    # def mse_loss():
-    
-
-    def distillation_loss_att(
-        self,
-        attention_teacher_layers: list[torch.Tensor],
-        attention_student_layers: list[torch.Tensor],
-        top_k_val: int,
-        mask: torch.Tensor
-    ) -> torch.Tensor:
-        
-        device = attention_teacher_layers[0].device
-        mask = mask.to(device).float()             # [B]
-        batch_size = mask.size(0)
-
-        num_layers = min(len(attention_teacher_layers), len(attention_student_layers))
-        total_loss = 0.0
-        # total_selected = mask.sum() * num_layers    # total contributions across layers
-        
-        for i in range(num_layers):
-            att_t = attention_teacher_layers[i]  # [B, H, N, N]
-            att_s = attention_student_layers[i]
-
-            # Mean over heads => [B, N, N]
-            mean_t = att_t.mean(dim=1)
-            mean_s = att_s.mean(dim=1)
-
-            # Importance per token => [B]
-            importance = mean_t.sum(dim=1)
-            k = min(top_k_val, mean_t.size(-1))
-            _, topk_idx = torch.topk(importance, k, dim=1)
-
-            # Gather top-k submatrices => [B, K]
-            batch_idx = torch.arange(batch_size, device=device).unsqueeze(1)
-            sub_t = mean_t[batch_idx, topk_idx]    # [B, K]
-            sub_s = mean_s[batch_idx, topk_idx]
-
-            # Mask entire rows: expand mask to [B, 1]
-            mask_row = mask.unsqueeze(1)          # [B, 1]
-
-            # print(mask_row)
-            # print(mask_row.shape)
-            # print(sub_t.shape)
-            # print(sub_t)
-            sub_t = sub_t * mask_row.unsqueeze(-1)
-            # sub_t = sub_t * mask_row
-            sub_s = sub_s * mask_row.unsqueeze(-1)
-
-            # Compute MSE loss over all entries; zeros for masked rows
-            sub_s = F.normalize(sub_s, dim=-1)
-            sub_t = F.normalize(sub_t, dim=-1)
-
-            layer_loss = F.mse_loss(sub_s, sub_t.detach(), reduction='mean')
-
-            total_loss += layer_loss
-
-    
-
-        return total_loss / num_layers
-    
     # def distillation_loss_att(
-    #     self, 
-    #     attention_teacher_layers,
-    #     attention_student_layers,
-    #     top_k_val: int
-    # ):
+    #     self,
+    #     attention_teacher_layers: list[torch.Tensor],
+    #     attention_student_layers: list[torch.Tensor],
+    #     top_k_val: int,
+    #     mask: torch.Tensor
+    # ) -> torch.Tensor:
+        
+    #     device = attention_teacher_layers[0].device
+    #     mask = mask.to(device).float()             # [B]
+    #     batch_size = mask.size(0)
 
-    #     num_layers_teacher = len(attention_teacher_layers)
-    #     num_layers_student = len(attention_student_layers)
-
-    #     num_distill_layers = min(num_layers_teacher, num_layers_student)
-
+    #     num_layers = min(len(attention_teacher_layers), len(attention_student_layers))
     #     total_loss = 0.0
-    #     actual_layers_processed = 0
+    #     # total_selected = mask.sum() * num_layers    # total contributions across layers
+        
+    #     for i in range(num_layers):
+    #         att_t = attention_teacher_layers[i]  # [B, H, N, N]
+    #         att_s = attention_student_layers[i]
 
-    #     for i in range(num_distill_layers):
-    #         att_teacher_layer = attention_teacher_layers[i]
-    #         att_student_layer = attention_student_layers[i]
+    #         # Mean over heads => [B, N, N]
+    #         mean_t = att_t.mean(dim=1)
+    #         mean_s = att_s.mean(dim=1)
 
-    #         batch_size, _, seq_len, _ = att_teacher_layer.shape
+    #         # Importance per token => [B]
+    #         importance = mean_t.sum(dim=1)
+    #         k = min(top_k_val, mean_t.size(-1))
+    #         _, topk_idx = torch.topk(importance, k, dim=1)
 
-    #         effective_k = min(top_k_val, seq_len)
+    #         # Gather top-k submatrices => [B, K]
+    #         batch_idx = torch.arange(batch_size, device=device).unsqueeze(1)
+    #         sub_t = mean_t[batch_idx, topk_idx]    # [B, K]
+    #         sub_s = mean_s[batch_idx, topk_idx]
 
-    #         # Output shape [B, N, N] (N=seq_len)
-    #         mean_att_teacher = att_teacher_layer.mean(dim=1)
-    #         mean_att_student = att_student_layer.mean(dim=1)
+    #         # Mask entire rows: expand mask to [B, 1]
+    #         mask_row = mask.unsqueeze(1)          # [B, 1]
 
-    #         # Shape: [B, N]
-    #         token_importance_scores = mean_att_teacher.sum(dim=1) 
-    #         # token_importance_scores = mean_att_student.sum(dim=1) 
+    #         # print(mask_row)
+    #         # print(mask_row.shape)
+    #         # print(sub_t.shape)
+    #         # print(sub_t)
+    #         sub_t = sub_t * mask_row.unsqueeze(-1)
+    #         # sub_t = sub_t * mask_row
+    #         sub_s = sub_s * mask_row.unsqueeze(-1)
 
+    #         # Compute MSE loss over all entries; zeros for masked rows
+    #         sub_s = F.normalize(sub_s, dim=-1)
+    #         sub_t = F.normalize(sub_t, dim=-1)
 
-    #         # top k 
-    #         _, top_k_indices = torch.topk(token_importance_scores, effective_k, dim=1, sorted=True)
+    #         layer_loss = F.mse_loss(sub_s, sub_t.detach(), reduction='mean')
 
-    #         idx_row = top_k_indices  # [B, K]
-    #         # Create batch indices for advanced indexing
-    #         batch_idx = torch.arange(batch_size, device=att_teacher_layer.device).view(-1, 1)  # [B, 1]
-    #         sub_matrix_teacher = mean_att_teacher[batch_idx, idx_row]  # [B, K]
-    #         sub_matrix_student = mean_att_student[batch_idx, idx_row]  # [B, K]
-
-    #         # Distillation loss 
-    #         layer_loss = F.mse_loss(sub_matrix_student, sub_matrix_teacher.detach(), reduction = 'sum')
     #         total_loss += layer_loss
-    #         actual_layers_processed += 1
+
+    #     return total_loss / num_layers
+    
+    def distillation_loss_att(
+        self, 
+        attention_teacher_layers,
+        attention_student_layers,
+        top_k_val: int
+    ):
+
+        num_layers_teacher = len(attention_teacher_layers)
+        num_layers_student = len(attention_student_layers)
+
+        num_distill_layers = min(num_layers_teacher, num_layers_student)
+
+        total_loss = 0.0
+        actual_layers_processed = 0
+
+        for i in range(num_distill_layers):
+            att_teacher_layer = attention_teacher_layers[i]
+            att_student_layer = attention_student_layers[i]
+
+            batch_size, _, seq_len, _ = att_teacher_layer.shape
+
+            effective_k = min(top_k_val, seq_len)
+
+            # Output shape [B, N, N] (N=seq_len)
+            mean_att_teacher = att_teacher_layer.mean(dim=1)
+            mean_att_student = att_student_layer.mean(dim=1)
+
+            # Shape: [B, N]
+            token_importance_scores = mean_att_teacher.sum(dim=1) 
+            # token_importance_scores = mean_att_student.sum(dim=1) 
+
+
+            # top k 
+            _, top_k_indices = torch.topk(token_importance_scores, effective_k, dim=1, sorted=True)
+
+            idx_row = top_k_indices  # [B, K]
+            # Create batch indices for advanced indexing
+            batch_idx = torch.arange(batch_size, device=att_teacher_layer.device).view(-1, 1)  # [B, 1]
+            sub_matrix_teacher = mean_att_teacher[batch_idx, idx_row]  # [B, K]
+            sub_matrix_student = mean_att_student[batch_idx, idx_row]  # [B, K]
+
+            sub_matrix_student = F.normalize(sub_matrix_student, dim=-1)
+            sub_matrix_teacher = F.normalize(sub_matrix_teacher, dim=-1)
+
+            # Distillation loss 
+            layer_loss = F.mse_loss(sub_matrix_student, sub_matrix_teacher.detach(), reduction = 'sum')
+            total_loss += layer_loss
+            actual_layers_processed += 1
         
 
-    #     return total_loss / actual_layers_processed
+        return total_loss / actual_layers_processed
 
 
 
