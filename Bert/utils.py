@@ -304,7 +304,7 @@ class Moment:
             sub_matrix_teacher = F.normalize(sub_matrix_teacher, dim=-1)
 
             # Distillation loss 
-            layer_loss = F.mse_loss(sub_matrix_student, sub_matrix_teacher.detach(), reduction = 'sum')
+            layer_loss = F.mse_loss(sub_matrix_student, sub_matrix_teacher.detach(), reduction = 'mean')
             total_loss += layer_loss
             actual_layers_processed += 1
         
