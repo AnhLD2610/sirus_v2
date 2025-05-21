@@ -300,8 +300,8 @@ class Moment:
             sub_matrix_teacher = mean_att_teacher[batch_idx, idx_row]  # [B, K]
             sub_matrix_student = mean_att_student[batch_idx, idx_row]  # [B, K]
 
-            sub_matrix_student = F.normalize(sub_matrix_student, dim=-1)
-            sub_matrix_teacher = F.normalize(sub_matrix_teacher, dim=-1)
+            # sub_matrix_student = F.normalize(sub_matrix_student, dim=-1)
+            # sub_matrix_teacher = F.normalize(sub_matrix_teacher, dim=-1)
 
             # Distillation loss 
             layer_loss = F.mse_loss(sub_matrix_student, sub_matrix_teacher.detach(), reduction = 'mean')
