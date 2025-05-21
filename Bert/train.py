@@ -306,14 +306,14 @@ class Manager(object):
                 loss_att = self.moment.distillation_loss_att(
                     attention_teacher_layers=attention_pre, 
                     attention_student_layers=attention, 
-                    top_k_val=100,
+                    top_k_val=5,
                     # mask=mask
                 )  
 
                 loss_att_des = self.moment.distillation_loss_att(
                     attention_teacher_layers=attention_des_pre, 
                     attention_student_layers=attention_des, 
-                    top_k_val=100,
+                    top_k_val=5,
                     # mask=mask
                 )  
                 loss4 = loss_att + loss_att_des
