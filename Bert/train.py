@@ -297,10 +297,10 @@ class Manager(object):
 
                 # loss4 = self.moment.distillation_loss_att(attention_des_pre, attention_des , 10) + self.moment.distillation_loss_att(attention_pre, attention, 10)
              
-                
+                hidden_pre = F.normalize(hidden_pre, dim=1)  
+                rep_des_pre = F.normalize(rep_des_pre, dim=1) 
                 sim  = F.cosine_similarity(hidden_pre, rep_des_pre, dim=1)  # [B]
-                sim = (sim + 1.0)/2
-                mask = (sim > 0)                                     # [B], torch.bool or byte tensor
+                mask = (sim > 0.7)                                     # [B], torch.bool or byte tensor
                 # mask = sim                               # [B], torch.bool or byte tensor
 
                 # loss_att = self.moment.distillation_loss_att(

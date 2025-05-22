@@ -320,9 +320,13 @@ class Moment:
         mask = mask.to(device).float()            
         hidden_teacher = hidden_teacher.to(device) 
 
+
+        hidden_teacher = F.normalize(hidden_teacher, dim=1)  
+        hidden_student = F.normalize(hidden_student, dim=1) 
+        
         cos_sim = F.cosine_similarity(hidden_student, hidden_teacher, dim=1)
-        loss = 1.0 - torch.abs(cos_sim)
- # Option 2 (smoother loss): 1 - (cos_sim ** 2)
+        loss = 1.0 - cos_sim
+        # Option 2 (smoother loss): 1 - (cos_sim ** 2)
         # loss = 1.0 - (cos_sim ** 2)
         masked_loss = loss * mask
 
