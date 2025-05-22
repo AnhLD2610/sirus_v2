@@ -317,7 +317,7 @@ class Moment:
         # mask: torch.Tensor # (b)
     ) -> torch.Tensor:
         device = hidden_student.device
-        mask = mask.to(device).float()            
+        # mask = mask.to(device).float()            
         hidden_teacher = hidden_teacher.to(device) 
 
 
