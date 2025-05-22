@@ -143,7 +143,7 @@ class Moment:
             
             # Update neg based on the relation match mask
             # neg = relation_match * (1.0 + 0.6* t2 - 0.3)+ (1.0 - relation_match) * 1.0
-            neg = relation_match * (1.0 + 0.25* t2)+ (1.0 - relation_match) * 1.0
+            neg = relation_match * (1.0 + 0.2* t2)+ (1.0 - relation_match) * 1.0
 
 
         dot_product_tempered_pos = torch.where(pos > 0, pos * t1 / self.temperature, zeros)
@@ -187,7 +187,7 @@ class Moment:
             relation_match = (labels_clusters.unsqueeze(1) == labels_clusters.unsqueeze(0)).float()
             
             # neg = relation_match * (1.0 + 0.2*t2) + (1.0 - relation_match) * 1.0
-            neg = relation_match * (1.0 + 0.25*t2) + (1.0 - relation_match) * 1.0
+            neg = relation_match * (1.0 + 0.2*t2) + (1.0 - relation_match) * 1.0
 
             f_neg = similarity_matrix*(~mask)*neg
 
