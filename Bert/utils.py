@@ -311,33 +311,48 @@ class Moment:
 
     #     return total_loss / actual_layers_processed
 
-    def distillation_loss_hidden(self,
-        hidden_teacher: torch.Tensor, # (b,n)
-        hidden_student: torch.Tensor, # (b,n)
-        # mask: torch.Tensor # (b)
-    ) -> torch.Tensor:
-        device = hidden_student.device
-        # mask = mask.to(device).float()            
-        hidden_teacher = hidden_teacher.to(device) 
+    # def distillation_loss_hidden(self,
+    #     hidden_teacher: torch.Tensor, # (b,n)
+    #     hidden_student: torch.Tensor, # (b,n)
+    #     # mask: torch.Tensor # (b)
+    # ) -> torch.Tensor:
+    #     device = hidden_student.device
+    #     # mask = mask.to(device).float()            
+    #     hidden_teacher = hidden_teacher.to(device) 
 
+
+    #     hidden_teacher = F.normalize(hidden_teacher, dim=1)  
+    #     hidden_student = F.normalize(hidden_student, dim=1) 
+        
+    #     cos_sim = F.cosine_similarity(hidden_student, hidden_teacher, dim=1)
+    #     loss = 1.0 - cos_sim
+    #     # Option 2 (smoother loss): 1 - (cos_sim ** 2)
+    #     # loss = 1.0 - (cos_sim ** 2)
+
+    #     # masked_loss = loss * mask
+
+    #     # num_selected_samples = mask.sum()
+    #     # if num_selected_samples > 0:
+    #     #     mean_loss = masked_loss.sum() / num_selected_samples
+    #     # else:
+    #     #     mean_loss = torch.tensor(0.0, device=device) # Or handle as appropriate
+
+    #     return loss/ hidden_student.shape[0]
+
+    def distillation_loss_hidden(self,
+            hidden_teacher: torch.Tensor, # (b,n)
+            hidden_student: torch.Tensor, # (b,n)
+        ) -> torch.Tensor:
+        device = hidden_student.device
+        hidden_teacher = hidden_teacher.to(device) 
 
         hidden_teacher = F.normalize(hidden_teacher, dim=1)  
         hidden_student = F.normalize(hidden_student, dim=1) 
         
         cos_sim = F.cosine_similarity(hidden_student, hidden_teacher, dim=1)
         loss = 1.0 - cos_sim
-        # Option 2 (smoother loss): 1 - (cos_sim ** 2)
-        # loss = 1.0 - (cos_sim ** 2)
 
-        # masked_loss = loss * mask
-
-        # num_selected_samples = mask.sum()
-        # if num_selected_samples > 0:
-        #     mean_loss = masked_loss.sum() / num_selected_samples
-        # else:
-        #     mean_loss = torch.tensor(0.0, device=device) # Or handle as appropriate
-
-        return loss/ hidden_student.shape[0]
+        return loss.mean()
 
 
     # def distillation_loss_att(
