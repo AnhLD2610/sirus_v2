@@ -314,7 +314,7 @@ class Moment:
     def distillation_loss_hidden(self,
         hidden_teacher: torch.Tensor, # (b,n)
         hidden_student: torch.Tensor, # (b,n)
-        mask: torch.Tensor # (b)
+        # mask: torch.Tensor # (b)
     ) -> torch.Tensor:
         device = hidden_student.device
         mask = mask.to(device).float()            
@@ -328,15 +328,16 @@ class Moment:
         loss = 1.0 - cos_sim
         # Option 2 (smoother loss): 1 - (cos_sim ** 2)
         # loss = 1.0 - (cos_sim ** 2)
-        masked_loss = loss * mask
 
-        num_selected_samples = mask.sum()
-        if num_selected_samples > 0:
-            mean_loss = masked_loss.sum() / num_selected_samples
-        else:
-            mean_loss = torch.tensor(0.0, device=device) # Or handle as appropriate
+        # masked_loss = loss * mask
 
-        return mean_loss
+        # num_selected_samples = mask.sum()
+        # if num_selected_samples > 0:
+        #     mean_loss = masked_loss.sum() / num_selected_samples
+        # else:
+        #     mean_loss = torch.tensor(0.0, device=device) # Or handle as appropriate
+
+        return loss/ hidden_student.shape[0]
 
 
     # def distillation_loss_att(
