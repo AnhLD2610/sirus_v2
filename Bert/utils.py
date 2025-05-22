@@ -229,15 +229,18 @@ class Moment:
             mean_s = att_s.mean(dim=1)
 
             # Importance per token => [B]
-            importance = mean_t.sum(dim=1)
-            k = min(top_k_val, mean_t.size(-1))
-            _, topk_idx = torch.topk(importance, k, dim=1)
+            
+            # start
+            # importance = mean_t.sum(dim=1)
+            # k = min(top_k_val, mean_t.size(-1))
+            # _, topk_idx = torch.topk(importance, k, dim=1)
 
             # Gather top-k submatrices => [B, K]
-            batch_idx = torch.arange(batch_size, device=device).unsqueeze(1)
-            sub_t = mean_t[batch_idx, topk_idx]    # [B, K]
-            sub_s = mean_s[batch_idx, topk_idx]
-
+            # batch_idx = torch.arange(batch_size, device=device).unsqueeze(1)
+            # sub_t = mean_t[batch_idx, topk_idx]    # [B, K]
+            # sub_s = mean_s[batch_idx, topk_idx]
+            # end 
+            
             # Mask entire rows: expand mask to [B, 1]
             mask_row = mask.unsqueeze(1)          # [B, 1]
 
@@ -245,9 +248,9 @@ class Moment:
             # print(mask_row.shape)
             # print(sub_t.shape)
             # print(sub_t)
-            sub_t = sub_t * mask_row.unsqueeze(-1)
+            sub_t = mean_t * mask_row.unsqueeze(-1)
             # sub_t = sub_t * mask_row
-            sub_s = sub_s * mask_row.unsqueeze(-1)
+            sub_s = mean_s * mask_row.unsqueeze(-1)
 
             # Compute MSE loss over all entries; zeros for masked rows
             # sub_s = F.normalize(sub_s, dim=-1)
