@@ -300,35 +300,35 @@ class Manager(object):
                 hidden_pre = F.normalize(hidden_pre, dim=1)  
                 rep_des_pre = F.normalize(rep_des_pre, dim=1) 
                 sim  = F.cosine_similarity(hidden_pre, rep_des_pre, dim=1)  # [B]
-                mask = (sim > 0.8)                                     # [B], torch.bool or byte tensor
+                mask = (sim > 0.9)                                     # [B], torch.bool or byte tensor
                 # mask = sim                               # [B], torch.bool or byte tensor
 
-                loss_att = self.moment.distillation_loss_att(
-                    attention_teacher_layers=attention_pre, 
-                    attention_student_layers=attention, 
-                    top_k_val=10,
-                    mask=mask
-                )  
+                # loss_att = self.moment.distillation_loss_att(
+                #     attention_teacher_layers=attention_pre, 
+                #     attention_student_layers=attention, 
+                #     top_k_val=10,
+                #     mask=mask
+                # )  
 
-                loss_att_des = self.moment.distillation_loss_att(
-                    attention_teacher_layers=attention_des_pre, 
-                    attention_student_layers=attention_des, 
-                    top_k_val=10,
-                    mask=mask
-                )  
-                loss4 = loss_att + loss_att_des
+                # loss_att_des = self.moment.distillation_loss_att(
+                #     attention_teacher_layers=attention_des_pre, 
+                #     attention_student_layers=attention_des, 
+                #     top_k_val=10,
+                #     mask=mask
+                # )  
+                # loss4 = loss_att + loss_att_des
 
-                # loss_hid = self.moment.distillation_loss_hidden(
-                #         hidden_teacher = hidden_pre,
-                #         hidden_student = hidden,
-                #         mask = mask
-                # )
-                # loss_hid_des = self.moment.distillation_loss_hidden(
-                #     hidden_teacher = rep_des_pre,
-                #     hidden_student = rep_des,
-                #     mask = mask
-                # )
-                # loss4 = loss_hid + loss_hid_des
+                loss_hid = self.moment.distillation_loss_hidden(
+                        hidden_teacher = hidden_pre,
+                        hidden_student = hidden,
+                        mask = mask
+                )
+                loss_hid_des = self.moment.distillation_loss_hidden(
+                    hidden_teacher = rep_des_pre,
+                    hidden_student = rep_des,
+                    mask = mask
+                )
+                loss4 = loss_hid + loss_hid_des
 
 
                 with torch.no_grad():
