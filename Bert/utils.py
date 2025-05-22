@@ -259,7 +259,7 @@ class Moment:
             sub_t = F.softmax(sub_t, dim=-1)
             sub_s = F.softmax(sub_s, dim=-1)
 
-            layer_loss = F.mse_loss(sub_s, sub_t.detach(), reduction='mean')
+            layer_loss = F.mse_loss(sub_s, sub_t.detach(), reduction='sum')
 
             total_loss += layer_loss
 
