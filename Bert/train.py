@@ -297,38 +297,37 @@ class Manager(object):
 
                 # loss4 = self.moment.distillation_loss_att(attention_des_pre, attention_des , 10) + self.moment.distillation_loss_att(attention_pre, attention, 10)
              
-                # hidden_pre = F.normalize(hidden_pre, dim=1)  
-                # rep_des_pre = F.normalize(rep_des_pre, dim=1) 
-                # sim  = F.cosine_similarity(hidden_pre, rep_des_pre, dim=1)  # [B]
-                # mask = (sim > 0.9)                                     # [B], torch.bool or byte tensor
-                # mask = sim                               # [B], torch.bool or byte tensor
+                hidden_pre = F.normalize(hidden_pre, dim=1)  
+                rep_des_pre = F.normalize(rep_des_pre, dim=1) 
+                sim  = F.cosine_similarity(hidden_pre, rep_des_pre, dim=1)  # [B]
+                mask = (sim > 0.9)                                     # [B], torch.bool or byte tensor
 
-                # loss_att = self.moment.distillation_loss_att(
-                #     attention_teacher_layers=attention_pre, 
-                #     attention_student_layers=attention, 
-                #     top_k_val=10,
-                #     mask=mask
-                # )  
+                loss_att = self.moment.distillation_loss_att(
+                    attention_teacher_layers=attention_pre, 
+                    attention_student_layers=attention, 
+                    top_k_val=args.top_k,
+                    mask=mask
+                )  
 
-                # loss_att_des = self.moment.distillation_loss_att(
-                #     attention_teacher_layers=attention_des_pre, 
-                #     attention_student_layers=attention_des, 
-                #     top_k_val=10,
-                #     mask=mask
-                # )  
-                # loss4 = loss_att + loss_att_des
+                loss_att_des = self.moment.distillation_loss_att(
+                    attention_teacher_layers=attention_des_pre, 
+                    attention_student_layers=attention_des, 
+                    top_k_val=args.top_k,
+                    mask=mask
+                )  
+                loss4 = loss_att + loss_att_des
 
-                loss_hid = self.moment.distillation_loss_hidden(
-                        hidden_teacher = hidden_pre,
-                        hidden_student = hidden,
-                        # mask = mask
-                )
-                loss_hid_des = self.moment.distillation_loss_hidden(
-                    hidden_teacher = rep_des_pre,
-                    hidden_student = rep_des,
-                    # mask = mask
-                )
-                loss4 = loss_hid + loss_hid_des
+                # loss_hid = self.moment.distillation_loss_hidden(
+                #         hidden_teacher = hidden_pre,
+                #         hidden_student = hidden,
+                #         # mask = mask
+                # )
+                # loss_hid_des = self.moment.distillation_loss_hidden(
+                #     hidden_teacher = rep_des_pre,
+                #     hidden_student = rep_des,
+                #     # mask = mask
+                # )
+                # loss4 = loss_hid + loss_hid_des
 
 
                 with torch.no_grad():
@@ -738,7 +737,7 @@ if __name__ == '__main__':
     parser.add_argument("--lambda_3", default=0.25, type=float)
     parser.add_argument("--temperature", default=0.01, type=float)
     parser.add_argument("--distance_threshold", default=0.1, type=float)
-    parser.add_argument("--top_k", default=20, type=int)
+    parser.add_argument("--top_k", default=10, type=int)
     # Tacred
     # parser.add_argument("--task_name", default="Tacred", type=str)
     # parser.add_argument("--num_k", default=5, type=int)
