@@ -1,658 +1,424 @@
 import numpy as np
 import pandas as pd
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from collections import deque, namedtuple
+import matplotlib.pyplot as plt
+from collections import deque
 import random
-import math
-from typing import Tuple, List, Optional
-import talib
+from typing import List, Tuple, Dict, Optional
+import warnings
+warnings.filterwarnings('ignore')
 
-# Configuration and constants
-class Config:
-    # Environment parameters
-    TICK_SPACING = 60  # For 0.3% fee pools
-    MAX_WIDTH = 20     # Maximum liquidity interval width
-    GAS_FEE = 1.0     # Flat gas fee assumption
-    
-    # DRL parameters
-    HIDDEN_UNITS = [64, 64]
-    LEARNING_RATE = 1e-4
-    BATCH_SIZE = 256
-    BUFFER_SIZE = int(1e6)
-    GAMMA = 0.9
-    TARGET_UPDATE_RATE = 0.01
-    GRADIENT_CLIP_NORM = 0.7
-    EPSILON_START = 1.0
-    EPSILON_END = 0.01
-    EPSILON_DECAY = 0.995
+class TradingEnvironment:
+    """
+    Trading environment for reinforcement learning
+    """
 
-class TechnicalIndicators:
-    """Calculate technical indicators for state features"""
-    
-    @staticmethod
-    def calculate_features(df: pd.DataFrame) -> np.ndarray:
-        """Calculate all technical indicators from OHLCV data"""
+    def __init__(self, data: pd.DataFrame, initial_balance: float = 10000.0,
+                 transaction_cost: float = 0.001, window_size: int = 20):
+        """
+        Initialize trading environment
+
+        Args:
+            data: DataFrame with OHLCV data
+            initial_balance: Starting cash balance
+            transaction_cost: Transaction cost as percentage
+            window_size: Number of previous periods to include in state
+        """
+        self.data = data.copy()
+        self.initial_balance = initial_balance
+        self.transaction_cost = transaction_cost
+        self.window_size = window_size
+
+        self.reset()
+
+    def reset(self):
+        """Reset environment to initial state"""
+        self.current_step = self.window_size
+        self.balance = self.initial_balance
+        self.shares = 0
+        self.total_profit = 0
+        self.trades = []
+        self.portfolio_values = [self.initial_balance]
+        return self._get_state()
+
+    def _get_state(self) -> np.ndarray:
+        """Get current state representation"""
+        if self.current_step < self.window_size:
+            return np.zeros(self.window_size * 8 + 3)
+
+        # Price and volume features
+        start_idx = self.current_step - self.window_size
+        end_idx = self.current_step
+
         features = []
-        
-        # Basic price features
-        features.append(df['open'].values[-1])  # Current open price
-        features.append(df['high'].values[-1] / df['open'].values[-1])  # High/Open ratio
-        features.append(df['low'].values[-1] / df['open'].values[-1])   # Low/Open ratio
-        features.append(df['close'].values[-1] / df['open'].values[-1]) # Close/Open ratio
-        features.append(df['volume'].values[-1])  # Trading volume
-        
-        # Technical indicators
-        close_prices = df['close'].values
-        high_prices = df['high'].values
-        low_prices = df['low'].values
-        volume = df['volume'].values
-        
-        # DEMA - Double Exponential Moving Average
-        dema = talib.DEMA(close_prices, timeperiod=14)
-        features.append(dema[-1] / df['open'].values[-1] if not np.isnan(dema[-1]) else 1.0)
-        
-        # SAR - Parabolic SAR
-        sar = talib.SAR(high_prices, low_prices)
-        features.append(sar[-1] / df['open'].values[-1] if not np.isnan(sar[-1]) else 1.0)
-        
-        # ADX - Average Directional Movement Index
-        adx = talib.ADX(high_prices, low_prices, close_prices, timeperiod=14)
-        features.append(adx[-1] if not np.isnan(adx[-1]) else 50.0)
-        
-        # APO - Absolute Price Oscillator
-        apo = talib.APO(close_prices)
-        features.append(apo[-1] if not np.isnan(apo[-1]) else 0.0)
-        
-        # AROON - Aroon Oscillator
-        aroon_down, aroon_up = talib.AROON(high_prices, low_prices, timeperiod=14)
-        aroon_osc = aroon_up[-1] - aroon_down[-1] if not (np.isnan(aroon_up[-1]) or np.isnan(aroon_down[-1])) else 0.0
-        features.append(aroon_osc)
-        
-        # BOP - Balance of Power
-        bop = talib.BOP(df['open'].values, high_prices, low_prices, close_prices)
-        features.append(bop[-1] if not np.isnan(bop[-1]) else 0.0)
-        
-        # CCI - Commodity Channel Index
-        cci = talib.CCI(high_prices, low_prices, close_prices, timeperiod=14)
-        features.extend([cci[-1] if not np.isnan(cci[-1]) else 0.0, cci[-2] if len(cci) > 1 and not np.isnan(cci[-2]) else 0.0])
-        
-        # CMO - Chande Momentum Oscillator
-        cmo = talib.CMO(close_prices, timeperiod=14)
-        features.append(cmo[-1] if not np.isnan(cmo[-1]) else 0.0)
-        
-        # DX - Directional Movement Index
-        dx = talib.DX(high_prices, low_prices, close_prices, timeperiod=14)
-        features.append(dx[-1] if not np.isnan(dx[-1]) else 0.0)
-        
-        # MINUS_DM - Minus Directional Movement
-        minus_dm = talib.MINUS_DM(high_prices, low_prices, timeperiod=14)
-        features.append(minus_dm[-1] if not np.isnan(minus_dm[-1]) else 0.0)
-        
-        # MOM - Momentum
-        mom = talib.MOM(close_prices, timeperiod=10)
-        features.append(mom[-1] if not np.isnan(mom[-1]) else 0.0)
-        
-        # PLUS_DM - Plus Directional Movement
-        plus_dm = talib.PLUS_DM(high_prices, low_prices, timeperiod=14)
-        features.append(plus_dm[-1] if not np.isnan(plus_dm[-1]) else 0.0)
-        
-        # TRIX
-        trix = talib.TRIX(close_prices, timeperiod=30)
-        features.append(trix[-1] if not np.isnan(trix[-1]) else 0.0)
-        
-        # ULTOSC - Ultimate Oscillator
-        ult_osc = talib.ULTOSC(high_prices, low_prices, close_prices)
-        features.append(ult_osc[-1] if not np.isnan(ult_osc[-1]) else 50.0)
-        
-        # Stochastic indicators
-        slowk, slowd = talib.STOCH(high_prices, low_prices, close_prices)
+
+        # OHLCV normalized data
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            features.extend(self.data[col].iloc[start_idx:end_idx].values)
+
+        current_data = self.data.iloc[self.current_step - 1]
+        features = current_data
+
+        # Portfolio state
+        current_price = self.data['close'].iloc[self.current_step - 1]
+        portfolio_value = self.balance + self.shares * current_price
+
         features.extend([
-            slowk[-1] if not np.isnan(slowk[-1]) else 50.0,
-            slowd[-1] if not np.isnan(slowd[-1]) else 50.0,
-            slowk[-1] - slowd[-1] if not (np.isnan(slowk[-1]) or np.isnan(slowd[-1])) else 0.0
+            self.balance / self.initial_balance,  # Normalized balance
+            self.shares * current_price / self.initial_balance,  # Normalized position value
+            portfolio_value / self.initial_balance  # Normalized total value
         ])
-        
-        # Fast Stochastic
-        fastk, fastd = talib.STOCHF(high_prices, low_prices, close_prices)
-        features.extend([
-            fastk[-1] if not np.isnan(fastk[-1]) else 50.0,
-            fastd[-1] if not np.isnan(fastd[-1]) else 50.0,
-            fastk[-1] - fastd[-1] if not (np.isnan(fastk[-1]) or np.isnan(fastd[-1])) else 0.0
-        ])
-        
-        # ATR - Average True Range
-        atr = talib.ATR(high_prices, low_prices, close_prices, timeperiod=14)
-        natr = talib.NATR(high_prices, low_prices, close_prices, timeperiod=14)
-        trange = talib.TRANGE(high_prices, low_prices, close_prices)
-        features.extend([
-            natr[-1] if not np.isnan(natr[-1]) else 1.0,
-            trange[-1] if not np.isnan(trange[-1]) else 0.0
-        ])
-        
-        # Hilbert Transform indicators
-        ht_dcperiod = talib.HT_DCPERIOD(close_prices)
-        ht_dcphase = talib.HT_DCPHASE(close_prices)
-        features.extend([
-            ht_dcperiod[-1] if not np.isnan(ht_dcperiod[-1]) else 15.0,
-            ht_dcphase[-1] if not np.isnan(ht_dcphase[-1]) else 0.0
-        ])
-        
+
         return np.array(features, dtype=np.float32)
 
-class UniswapV3Environment:
-    """Uniswap V3 liquidity provision environment"""
-    
-    def __init__(self, data: pd.DataFrame, initial_capital: float = 1000.0, fee_tier: float = 0.003):
-        self.data = data.copy()
-        self.initial_capital = initial_capital
-        self.fee_tier = fee_tier
-        self.tick_spacing = Config.TICK_SPACING
-        
-        # State variables
-        self.current_step = 0
-        self.cash = initial_capital
-        self.liquidity_value = 0.0
-        self.liquidity_center = 0  # Central tick of liquidity position
-        self.liquidity_width = 0   # Width of liquidity interval
-        self.liquidity_units = 0.0 # Amount of liquidity units L
-        
-        # Position tracking
-        self.position_active = False
-        
-    def price_to_tick(self, price: float) -> int:
-        """Convert price to tick"""
-        return int(math.log(price, 1.0001))
-    
-    def tick_to_price(self, tick: int) -> float:
-        """Convert tick to price"""
-        return 1.0001 ** tick
-    
-    def calculate_reserves(self, price: float, tick_lower: int, tick_upper: int, liquidity: float) -> Tuple[float, float]:
-        """Calculate token reserves for a liquidity position"""
-        price_lower = self.tick_to_price(tick_lower)
-        price_upper = self.tick_to_price(tick_upper)
-        sqrt_price = math.sqrt(price)
-        sqrt_price_lower = math.sqrt(price_lower)
-        sqrt_price_upper = math.sqrt(price_upper)
-        
-        if price <= price_lower:
-            # All token X
-            x = liquidity * (1/sqrt_price_lower - 1/sqrt_price_upper)
-            y = 0
-        elif price >= price_upper:
-            # All token Y
-            x = 0
-            y = liquidity * (sqrt_price_upper - sqrt_price_lower)
-        else:
-            # Mixed position
-            x = liquidity * (1/sqrt_price - 1/sqrt_price_upper)
-            y = liquidity * (sqrt_price - sqrt_price_lower)
-            
-        return x, y
-    
-    def calculate_position_value(self, price: float) -> float:
-        """Calculate current value of liquidity position"""
-        if not self.position_active or self.liquidity_units == 0:
-            return 0.0
-            
-        tick_lower = self.liquidity_center - self.liquidity_width * self.tick_spacing
-        tick_upper = self.liquidity_center + self.liquidity_width * self.tick_spacing
-        
-        x, y = self.calculate_reserves(price, tick_lower, tick_upper, self.liquidity_units)
-        return price * x + y
-    
-    def calculate_trading_fee(self, price_from: float, price_to: float) -> float:
-        """Calculate trading fees earned during price movement"""
-        if not self.position_active or self.liquidity_units == 0:
-            return 0.0
-            
-        tick_lower = self.liquidity_center - self.liquidity_width * self.tick_spacing
-        tick_upper = self.liquidity_center + self.liquidity_width * self.tick_spacing
-        price_lower = self.tick_to_price(tick_lower)
-        price_upper = self.tick_to_price(tick_upper)
-        
-        # Check if price movement is within liquidity range
-        if price_from <= price_lower and price_to <= price_lower:
-            return 0.0
-        if price_from >= price_upper and price_to >= price_upper:
-            return 0.0
-            
-        # Calculate fee based on price movement within range
-        sqrt_price_from = max(math.sqrt(price_lower), min(math.sqrt(price_upper), math.sqrt(price_from)))
-        sqrt_price_to = max(math.sqrt(price_lower), min(math.sqrt(price_upper), math.sqrt(price_to)))
-        
-        fee = 0.0
-        if price_to > price_from:  # Upward price movement
-            fee = (self.fee_tier / (1 - self.fee_tier)) * self.liquidity_units * (sqrt_price_to - sqrt_price_from)
-        else:  # Downward price movement
-            fee = (self.fee_tier / (1 - self.fee_tier)) * self.liquidity_units * (1/sqrt_price_from - 1/sqrt_price_to) * price_from
-            
-        return max(0.0, fee)
-    
-    def calculate_lvr(self, price_from: float, price_to: float) -> float:
-        """Calculate Loss-Versus-Rebalancing"""
-        if not self.position_active or self.liquidity_units == 0:
-            return 0.0
-            
-        tick_lower = self.liquidity_center - self.liquidity_width * self.tick_spacing
-        tick_upper = self.liquidity_center + self.liquidity_width * self.tick_spacing
-        price_lower = self.tick_to_price(tick_lower)
-        price_upper = self.tick_to_price(tick_upper)
-        
-        # LVR calculation based on equation (5) from the paper
-        value_from = self.calculate_position_value(price_from)
-        value_to = self.calculate_position_value(price_to)
-        
-        x_from, _ = self.calculate_reserves(price_from, tick_lower, tick_upper, self.liquidity_units)
-        
-        # LVR = Change in position value - rebalancing portfolio return
-        lvr = (value_to - value_from) - x_from * (price_to - price_from)
-        
-        return lvr
-    
-    def get_state(self) -> np.ndarray:
-        """Get current state representation"""
-        if self.current_step < 30:  # Need enough history for technical indicators
-            # Return zeros for insufficient history
-            market_features = np.zeros(28, dtype=np.float32)
-        else:
-            # Calculate technical indicators
-            hist_data = self.data.iloc[max(0, self.current_step-100):self.current_step+1]
-            market_features = TechnicalIndicators.calculate_features(hist_data)
-            
-        # Position state
-        cash_normalized = self.cash / self.initial_capital
-        center_tick_normalized = self.liquidity_center / 10000.0  # Normalize tick
-        width_normalized = self.liquidity_width / Config.MAX_WIDTH
-        position_value_normalized = self.liquidity_value / self.initial_capital
-        
-        state = np.concatenate([
-            market_features,
-            [cash_normalized, center_tick_normalized, width_normalized, position_value_normalized]
-        ])
-        
-        return state.astype(np.float32)
-    
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
-        """Execute one step in the environment"""
-        if self.current_step >= len(self.data) - 1:
-            return self.get_state(), 0.0, True, {}
-            
-        current_price = self.data.iloc[self.current_step]['close']
-        next_price = self.data.iloc[self.current_step + 1]['close']
-        
-        # Calculate rewards before taking action
-        trading_fee = 0.0
-        lvr = 0.0
-        gas_fee = 0.0
-        
-        if self.position_active:
-            trading_fee = self.calculate_trading_fee(current_price, next_price)
-            lvr = self.calculate_lvr(current_price, next_price)
-        
-        # Take action
-        if action == 0:
-            # Hold current position
-            pass
-        else:
-            # Reallocate liquidity
-            gas_fee = Config.GAS_FEE
-            
-            # Close current position
-            if self.position_active:
-                self.cash += self.calculate_position_value(current_price)
-                self.position_active = False
-            
-            # Open new position
-            current_tick = self.price_to_tick(current_price)
-            self.liquidity_center = self.tick_spacing * round(current_tick / self.tick_spacing)
-            self.liquidity_width = action
-            
-            # Calculate liquidity units based on available capital
-            total_capital = self.cash + self.liquidity_value
-            
-            tick_lower = self.liquidity_center - self.liquidity_width * self.tick_spacing
-            tick_upper = self.liquidity_center + self.liquidity_width * self.tick_spacing
-            
-            # Simplified liquidity calculation
-            price_lower = self.tick_to_price(tick_lower)
-            price_upper = self.tick_to_price(tick_upper)
-            sqrt_price = math.sqrt(current_price)
-            sqrt_price_lower = math.sqrt(price_lower)
-            sqrt_price_upper = math.sqrt(price_upper)
-            
-            if current_price <= price_lower:
-                self.liquidity_units = total_capital / (current_price * (1/sqrt_price_lower - 1/sqrt_price_upper))
-            elif current_price >= price_upper:
-                self.liquidity_units = total_capital / (sqrt_price_upper - sqrt_price_lower)
-            else:
-                # Mixed case - simplified calculation
-                self.liquidity_units = total_capital / (2 * sqrt_price)
-            
-            self.position_active = True
-            self.cash = 0.0  # All capital is now in the position
-        
-        # Update position value
-        self.liquidity_value = self.calculate_position_value(next_price)
-        
-        # Calculate reward (with hedging assumption)
-        reward = trading_fee + lvr - gas_fee
-        
-        # Move to next step
+        """
+        Execute action and return next state, reward, done flag, and info
+
+        Actions:
+        0: Hold
+        1: Buy
+        2: Sell
+        """
+        if self.current_step >= len(self.data):
+            return self._get_state(), 0, True, {}
+
+        current_price = self.data['close'].iloc[self.current_step]
+        previous_price = self.data['close'].iloc[self.current_step - 1]
+
+        # Calculate reward based on previous action's performance
+        reward = 0
+
+        # Execute action
+        if action == 1:  # Buy
+            if self.balance > current_price * (1 + self.transaction_cost):
+                shares_to_buy = self.balance // (current_price * (1 + self.transaction_cost))
+                cost = shares_to_buy * current_price * (1 + self.transaction_cost)
+                self.balance -= cost
+                self.shares += shares_to_buy
+                self.trades.append(('BUY', self.current_step, current_price, shares_to_buy))
+
+        elif action == 2:  # Sell
+            if self.shares > 0:
+                revenue = self.shares * current_price * (1 - self.transaction_cost)
+                self.balance += revenue
+                self.trades.append(('SELL', self.current_step, current_price, self.shares))
+                self.shares = 0
+
+        # Calculate portfolio value and reward
+        portfolio_value = self.balance + self.shares * current_price
+        self.portfolio_values.append(portfolio_value)
+
+        # Reward calculation
+        portfolio_return = (portfolio_value - self.portfolio_values[-2]) / self.portfolio_values[-2]
+        market_return = (current_price - previous_price) / previous_price
+
+        # Reward for outperforming market
+        reward = portfolio_return - market_return
+
+        # Penalty for large drawdowns
+        if len(self.portfolio_values) > 1:
+            max_value = max(self.portfolio_values)
+            current_drawdown = (max_value - portfolio_value) / max_value
+            reward -= current_drawdown * 0.1
+
         self.current_step += 1
-        
-        # Check if episode is done
         done = self.current_step >= len(self.data) - 1
-        
+
         info = {
-            'trading_fee': trading_fee,
-            'lvr': lvr,
-            'gas_fee': gas_fee,
-            'position_value': self.liquidity_value,
-            'cash': self.cash
+            'portfolio_value': portfolio_value,
+            'balance': self.balance,
+            'shares': self.shares,
+            'current_price': current_price
         }
-        
-        return self.get_state(), reward, done, info
-    
-    def reset(self) -> np.ndarray:
-        """Reset environment to initial state"""
-        self.current_step = 0
-        self.cash = self.initial_capital
-        self.liquidity_value = 0.0
-        self.liquidity_center = 0
-        self.liquidity_width = 0
-        self.liquidity_units = 0.0
-        self.position_active = False
-        
-        return self.get_state()
 
-class DuelingDQN(nn.Module):
-    """Dueling Double Deep Q-Network"""
-    
-    def __init__(self, state_dim: int, action_dim: int, hidden_units: List[int] = None):
-        super(DuelingDQN, self).__init__()
-        
-        if hidden_units is None:
-            hidden_units = Config.HIDDEN_UNITS
-            
-        # Shared feature layers
-        layers = []
-        input_dim = state_dim
-        for hidden_dim in hidden_units:
-            layers.extend([
-                nn.Linear(input_dim, hidden_dim),
-                nn.ReLU()
-            ])
-            input_dim = hidden_dim
-        
-        self.feature_layer = nn.Sequential(*layers)
-        
-        # Value stream
-        self.value_stream = nn.Linear(input_dim, 1)
-        
-        # Advantage stream
-        self.advantage_stream = nn.Linear(input_dim, action_dim)
-        
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        features = self.feature_layer(x)
-        
-        value = self.value_stream(features)
-        advantage = self.advantage_stream(features)
-        
-        # Dueling architecture: Q(s,a) = V(s) + A(s,a) - mean(A(s,a))
-        q_values = value + advantage - advantage.mean(dim=1, keepdim=True)
-        
-        return q_values
+        return self._get_state(), reward, done, info
 
-class ReplayBuffer:
-    """Experience replay buffer"""
-    
-    def __init__(self, capacity: int):
-        self.buffer = deque(maxlen=capacity)
-        self.experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state', 'done'])
-    
-    def push(self, state, action, reward, next_state, done):
-        """Add experience to buffer"""
-        e = self.experience(state, action, reward, next_state, done)
-        self.buffer.append(e)
-    
-    def sample(self, batch_size: int):
-        """Sample batch of experiences"""
-        experiences = random.sample(self.buffer, batch_size)
-        
-        states = torch.FloatTensor([e.state for e in experiences])
-        actions = torch.LongTensor([e.action for e in experiences])
-        rewards = torch.FloatTensor([e.reward for e in experiences])
-        next_states = torch.FloatTensor([e.next_state for e in experiences])
-        dones = torch.BoolTensor([e.done for e in experiences])
-        
-        return states, actions, rewards, next_states, dones
-    
-    def __len__(self):
-        return len(self.buffer)
 
-class DRLAgent:
-    """Deep Reinforcement Learning Agent for Uniswap V3 Liquidity Provision"""
-    
-    def __init__(self, state_dim: int, action_dim: int):
-        self.state_dim = state_dim
-        self.action_dim = action_dim
-        
-        # Networks
-        self.q_network = DuelingDQN(state_dim, action_dim)
-        self.target_network = DuelingDQN(state_dim, action_dim)
-        self.optimizer = optim.Adam(self.q_network.parameters(), lr=Config.LEARNING_RATE)
-        
-        # Initialize target network
-        self.target_network.load_state_dict(self.q_network.state_dict())
-        
-        # Replay buffer
-        self.memory = ReplayBuffer(Config.BUFFER_SIZE)
-        
-        # Training parameters
-        self.epsilon = Config.EPSILON_START
-        self.steps_done = 0
-        
-    def select_action(self, state: np.ndarray, training: bool = True) -> int:
-        """Select action using epsilon-greedy policy"""
-        if training and random.random() < self.epsilon:
-            return random.randrange(self.action_dim)
-        
-        with torch.no_grad():
-            state_tensor = torch.FloatTensor(state).unsqueeze(0)
-            q_values = self.q_network(state_tensor)
-            return q_values.max(1)[1].item()
-    
-    def store_transition(self, state, action, reward, next_state, done):
-        """Store transition in replay buffer"""
-        self.memory.push(state, action, reward, next_state, done)
-    
-    def learn(self):
-        """Update the network"""
-        if len(self.memory) < Config.BATCH_SIZE:
+class DQNAgent:
+    """
+    Deep Q-Network agent for trading
+    """
+
+    def __init__(self, state_size: int, action_size: int = 3, learning_rate: float = 0.001):
+        self.state_size = state_size
+        self.action_size = action_size
+        self.learning_rate = learning_rate
+        self.epsilon = 1.0
+        self.epsilon_min = 0.01
+        self.epsilon_decay = 0.995
+        self.memory = deque(maxlen=2000)
+
+        # Simple neural network weights (since we can't use tensorflow/pytorch)
+        self.weights = self._initialize_weights()
+
+    def _initialize_weights(self):
+        """Initialize neural network weights"""
+        # Simple 3-layer network
+        weights = {}
+
+        # Layer 1: state_size -> 64
+        weights['W1'] = np.random.randn(self.state_size, 64) * 0.1
+        weights['b1'] = np.zeros(64)
+
+        # Layer 2: 64 -> 32
+        weights['W2'] = np.random.randn(64, 32) * 0.1
+        weights['b2'] = np.zeros(32)
+
+        # Layer 3: 32 -> action_size
+        weights['W3'] = np.random.randn(32, self.action_size) * 0.1
+        weights['b3'] = np.zeros(self.action_size)
+
+        return weights
+
+    def _relu(self, x):
+        """ReLU activation function"""
+        return np.maximum(0, x)
+
+    def _forward(self, state):
+        """Forward pass through network"""
+        # Layer 1
+        z1 = np.dot(state, self.weights['W1']) + self.weights['b1']
+        a1 = self._relu(z1)
+
+        # Layer 2
+        z2 = np.dot(a1, self.weights['W2']) + self.weights['b2']
+        a2 = self._relu(z2)
+
+        # Layer 3 (output)
+        z3 = np.dot(a2, self.weights['W3']) + self.weights['b3']
+
+        return z3, (z1, a1, z2, a2, z3)
+
+    def act(self, state):
+        """Choose action using epsilon-greedy policy"""
+        if np.random.random() <= self.epsilon:
+            return random.randrange(self.action_size)
+
+        q_values, _ = self._forward(state.reshape(1, -1))
+        return np.argmax(q_values[0])
+
+    def remember(self, state, action, reward, next_state, done):
+        """Store experience in replay buffer"""
+        self.memory.append((state, action, reward, next_state, done))
+
+    def replay(self, batch_size=32):
+        """Train the model on a batch of experiences"""
+        if len(self.memory) < batch_size:
             return
-        
-        # Sample batch
-        states, actions, rewards, next_states, dones = self.memory.sample(Config.BATCH_SIZE)
-        
-        # Current Q values
-        current_q_values = self.q_network(states).gather(1, actions.unsqueeze(1))
-        
-        # Next Q values (Double DQN)
-        next_actions = self.q_network(next_states).max(1)[1].detach()
-        next_q_values = self.target_network(next_states).gather(1, next_actions.unsqueeze(1)).squeeze(1)
-        target_q_values = rewards + (Config.GAMMA * next_q_values * ~dones)
-        
-        # Compute loss
-        loss = F.mse_loss(current_q_values.squeeze(), target_q_values.detach())
-        
-        # Optimize
-        self.optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), Config.GRADIENT_CLIP_NORM)
-        self.optimizer.step()
-        
-        # Update target network
-        self._soft_update()
-        
-        # Decay epsilon
-        if self.epsilon > Config.EPSILON_END:
-            self.epsilon *= Config.EPSILON_DECAY
-    
-    def _soft_update(self):
-        """Soft update of target network"""
-        for target_param, local_param in zip(self.target_network.parameters(), self.q_network.parameters()):
-            target_param.data.copy_(
-                Config.TARGET_UPDATE_RATE * local_param.data + 
-                (1.0 - Config.TARGET_UPDATE_RATE) * target_param.data
-            )
 
-def train_agent(agent: DRLAgent, env: UniswapV3Environment, episodes: int = 1000):
-    """Train the DRL agent"""
+        batch = random.sample(self.memory, batch_size)
+
+        for state, action, reward, next_state, done in batch:
+            target = reward
+            if not done:
+                next_q_values, _ = self._forward(next_state.reshape(1, -1))
+                target = reward + 0.95 * np.amax(next_q_values[0])
+
+            current_q_values, cache = self._forward(state.reshape(1, -1))
+            target_q_values = current_q_values.copy()
+            target_q_values[0][action] = target
+
+            # Simple gradient descent update
+            self._backward(state.reshape(1, -1), target_q_values, cache)
+
+        if self.epsilon > self.epsilon_min:
+            self.epsilon *= self.epsilon_decay
+
+    def _backward(self, state, target_q_values, cache):
+        """Backward pass (simplified gradient descent)"""
+        z1, a1, z2, a2, z3 = cache
+
+        # Output layer error
+        dz3 = z3 - target_q_values
+        dW3 = np.dot(a2.T, dz3) * self.learning_rate
+        db3 = np.sum(dz3, axis=0) * self.learning_rate
+
+        # Hidden layer 2 error
+        da2 = np.dot(dz3, self.weights['W3'].T)
+        dz2 = da2 * (z2 > 0)  # ReLU derivative
+        dW2 = np.dot(a1.T, dz2) * self.learning_rate
+        db2 = np.sum(dz2, axis=0) * self.learning_rate
+
+        # Hidden layer 1 error
+        da1 = np.dot(dz2, self.weights['W2'].T)
+        dz1 = da1 * (z1 > 0)  # ReLU derivative
+        dW1 = np.dot(state.T, dz1) * self.learning_rate
+        db1 = np.sum(dz1, axis=0) * self.learning_rate
+
+        # Update weights
+        self.weights['W3'] -= dW3
+        self.weights['b3'] -= db3
+        self.weights['W2'] -= dW2
+        self.weights['b2'] -= db2
+        self.weights['W1'] -= dW1
+        self.weights['b1'] -= db1
+
+
+def load_data_from_string(data_string: str) -> pd.DataFrame:
+    """Load trading data from string format"""
+    lines = data_string.strip().split('\n')
+
+    # Skip header lines and empty lines
+    data_lines = [line for line in lines if line.strip() and not line.startswith('open_time')]
+
+    data = []
+    for line in data_lines:
+        values = line.split()
+        if len(values) >= 6:  # Ensure we have enough values
+            try:
+                row = {
+                    'open_time': float(values[0]),
+                    'open': float(values[1]),
+                    'high': float(values[2]),
+                    'low': float(values[3]),
+                    'close': float(values[4]),
+                    'volume': float(values[5])
+                }
+                data.append(row)
+            except ValueError:
+                continue  # Skip malformed lines
+
+    return pd.DataFrame(data)
+
+
+def train_agent(env: TradingEnvironment, agent: DQNAgent, episodes: int = 100):
+    """Train the DQN agent"""
     scores = []
-    
+    portfolio_values = []
+
     for episode in range(episodes):
         state = env.reset()
         total_reward = 0
-        
+
         while True:
-            action = agent.select_action(state, training=True)
+            action = agent.act(state)
             next_state, reward, done, info = env.step(action)
-            
-            agent.store_transition(state, action, reward, next_state, done)
-            agent.learn()
-            
+
+            agent.remember(state, action, reward, next_state, done)
             state = next_state
             total_reward += reward
-            
-            if done:
-                break
-        
-        scores.append(total_reward)
-        
-        if episode % 100 == 0:
-            avg_score = np.mean(scores[-100:])
-            print(f"Episode {episode}, Average Score: {avg_score:.4f}, Epsilon: {agent.epsilon:.4f}")
-    
-    return scores
 
-def evaluate_agent(agent: DRLAgent, env: UniswapV3Environment) -> dict:
-    """Evaluate trained agent"""
+            if done:
+                portfolio_values.append(info['portfolio_value'])
+                break
+
+        scores.append(total_reward)
+        agent.replay()
+
+        if episode % 10 == 0:
+            avg_score = np.mean(scores[-10:])
+            avg_portfolio = np.mean(portfolio_values[-10:])
+            print(f"Episode {episode}, Avg Score: {avg_score:.4f}, "
+                  f"Avg Portfolio Value: ${avg_portfolio:.2f}, "
+                  f"Epsilon: {agent.epsilon:.4f}")
+
+    return scores, portfolio_values
+
+
+def backtest_strategy(env: TradingEnvironment, agent: DQNAgent):
+    """Backtest the trained strategy"""
     state = env.reset()
-    total_reward = 0
-    total_trading_fee = 0
-    total_gas_fee = 0
-    total_lvr = 0
     actions_taken = []
-    
+
     while True:
-        action = agent.select_action(state, training=False)
+        # Use greedy policy (no exploration)
+        old_epsilon = agent.epsilon
+        agent.epsilon = 0
+        action = agent.act(state)
+        agent.epsilon = old_epsilon
+
         actions_taken.append(action)
-        
         next_state, reward, done, info = env.step(action)
-        
-        total_reward += reward
-        total_trading_fee += info['trading_fee']
-        total_gas_fee += info['gas_fee']
-        total_lvr += info['lvr']
-        
         state = next_state
-        
+
         if done:
             break
-    
-    final_value = env.cash + env.liquidity_value
-    relative_pnl = (final_value - env.initial_capital) / env.initial_capital
-    
-    return {
-        'total_reward': total_reward,
-        'relative_pnl': relative_pnl,
-        'final_value': final_value,
-        'trading_fee': total_trading_fee,
-        'gas_fee': total_gas_fee,
-        'lvr': total_lvr,
-        'actions': actions_taken,
-        'num_reallocations': sum(1 for a in actions_taken if a > 0)
-    }
 
-# Example usage and demonstration
-def create_sample_data(n_hours: int = 2000) -> pd.DataFrame:
-    """Create sample price data for demonstration"""
-    np.random.seed(42)
-    
-    # Generate synthetic ETH/USDC price data
-    initial_price = 2000.0
-    prices = [initial_price]
-    volumes = []
-    
-    for i in range(n_hours):
-        # Geometric Brownian motion with some trend
-        dt = 1/24  # 1 hour
-        drift = 0.05 * dt  # 5% annual drift
-        volatility = 0.8 * math.sqrt(dt)  # 80% annual volatility
-        
-        price_change = prices[-1] * (drift + volatility * np.random.normal())
-        new_price = max(prices[-1] + price_change, 100.0)  # Minimum price floor
-        prices.append(new_price)
-        
-        # Generate volume
-        volume = np.random.lognormal(15, 1)  # Log-normal distribution for volume
-        volumes.append(volume)
-    
-    # Create OHLC data
-    data = []
-    for i in range(1, len(prices)):
-        open_price = prices[i-1]
-        close_price = prices[i]
-        
-        # Generate high and low
-        high_price = max(open_price, close_price) * (1 + abs(np.random.normal(0, 0.01)))
-        low_price = min(open_price, close_price) * (1 - abs(np.random.normal(0, 0.01)))
-        
-        data.append({
-            'open': open_price,
-            'high': high_price,
-            'low': low_price,
-            'close': close_price,
-            'volume': volumes[i-1]
-        })
-    
-    return pd.DataFrame(data)
+    return actions_taken, env.portfolio_values, env.trades
 
+
+def plot_results(portfolio_values: List[float], prices: np.ndarray, trades: List[Tuple]):
+    """Plot trading results"""
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+
+    # Portfolio value over time
+    ax1.plot(portfolio_values, label='Portfolio Value', color='blue')
+    ax1.axhline(y=portfolio_values[0], color='red', linestyle='--', label='Initial Value')
+    ax1.set_title('Portfolio Value Over Time')
+    ax1.set_ylabel('Value ($)')
+    ax1.legend()
+    ax1.grid(True)
+
+    # Price with buy/sell signals
+    ax2.plot(prices, label='Price', color='black', alpha=0.7)
+
+    # Mark trades
+    for trade in trades:
+        trade_type, step, price, shares = trade
+        color = 'green' if trade_type == 'BUY' else 'red'
+        marker = '^' if trade_type == 'BUY' else 'v'
+        ax2.scatter(step, price, color=color, marker=marker, s=100,
+                   label=f'{trade_type}' if trade == trades[0] or
+                   (trade_type == 'SELL' and trades[0][0] == 'BUY') else "")
+
+    ax2.set_title('Price with Trading Signals')
+    ax2.set_xlabel('Time Step')
+    ax2.set_ylabel('Price')
+    ax2.legend()
+    ax2.grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+
+# Example usage
 if __name__ == "__main__":
-    # Create sample data
-    print("Creating sample data...")
-    data = create_sample_data(2000)
-    
-    # Initialize environment
-    print("Initializing environment...")
-    env = UniswapV3Environment(data, initial_capital=1000.0)
-    
-    # Initialize agent
-    state_dim = 32  # 28 technical indicators + 4 position features
-    action_dim = Config.MAX_WIDTH + 1  # 0 (hold) + 1 to MAX_WIDTH (reallocate)
-    
-    print("Initializing DRL agent...")
-    agent = DRLAgent(state_dim, action_dim)
-    
+    # Sample data string (replace with your actual data)
+    sample_data = """
+    1.5E+12 301.13 301.13 300 301.13 3.82951 1.5E+12 1152.713 12 3.51562 1058.546 0
+    1.5E+12 300 301.13 298 298 1.97216 1.5E+12 592.0527 10 1.9683 590.9024 0
+    1.5E+12 298 298 298 298 0 1.5E+12 0 0 0 0 0
+    1.5E+12 298 299.05 298 299.05 12.88486 1.5E+12 3840.085 4 3.28872 980.435 0
+    1.5E+12 299.05 300.1 299.05 300.1 6.58304 1.5E+12 1970.701 8 0.51388 153.874 0
+    1.5E+12 299.4 300.8 299.39 299.39 11.97275 1.5E+12 3586.132 14 8.31452 2490.858 0
+    1.5E+12 299.39 299.39 299.39 299.39 20.79097 1.5E+12 6224.609 14 20.79097 6224.609 0
+    1.5E+12 299.39 300.79 299.39 299.6 27.59262 1.5E+12 8262.628 8 3.03842 911.3458 0
+    1.5E+12 299.6 299.6 299.6 299.6 4.5522 1.5E+12 1363.839 17 4.5522 1363.839 0
+    1.5E+12 299.6 300.8 299.6 300.79 5.23649 1.5E+12 1574.183 12 4.76497 1432.916 0
+    1.5E+12 300.79 301.13 300.79 301.13 15.94388 1.5E+12 4799.272 20 15.50588 4667.526 0
+    1.5E+12 301.13 302.57 301.13 301.61 14.31029 1.5E+12 4318.59 10 14.31029 4318.59 0
+    """
+
+    # Load data
+    data = load_data_from_string(sample_data)
+    print(f"Loaded {len(data)} data points")
+    print(data.head())
+
+    # Create environment and agent
+    env = TradingEnvironment(data, initial_balance=10000)
+    state_size = len(env._get_state())
+    agent = DQNAgent(state_size)
+
+    print(f"State size: {state_size}")
+    print("Starting training...")
+
     # Train agent
-    print("Training agent...")
-    scores = train_agent(agent, env, episodes=500)
-    
-    # Evaluate agent
-    print("Evaluating agent...")
-    results = evaluate_agent(agent, env)
-    
-    print("\n=== Evaluation Results ===")
-    print(f"Relative P&L: {results['relative_pnl']:.4f}")
-    print(f"Final Portfolio Value: ${results['final_value']:.2f}")
-    print(f"Total Trading Fees: ${results['trading_fee']:.2f}")
-    print(f"Total Gas Fees: ${results['gas_fee']:.2f}")
-    print(f"Total LVR: ${results['lvr']:.2f}")
-    print(f"Number of Reallocations: {results['num_reallocations']}")
-    print(f"Average Action: {np.mean([a for a in results['actions'] if a > 0]):.2f}")
-    
-    print("\nImplementation complete! The agent has been trained to adaptively manage")
+    scores, portfolio_values = train_agent(env, agent, episodes=50)
+
+    # Backtest
+    print("\nBacktesting...")
+    actions, final_portfolio_values, trades = backtest_strategy(env, agent)
+
+    # Results
+    initial_value = final_portfolio_values[0]
+    final_value = final_portfolio_values[-1]
+    total_return = (final_value - initial_value) / initial_value * 100
+
+    print(f"\nBacktest Results:")
+    print(f"Initial Portfolio Value: ${initial_value:.2f}")
+    print(f"Final Portfolio Value: ${final_value:.2f}")
+    print(f"Total Return: {total_return:.2f}%")
+    print(f"Number of Trades: {len(trades)}")
+
+    # Plot results
+    plot_results(final_portfolio_values, data['close'].values, trades)
