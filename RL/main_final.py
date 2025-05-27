@@ -10,7 +10,6 @@ import math
 from typing import Tuple, List, Optional
 import talib
 
-# Configuration and constants
 class Config:
     # Environment parameters
     TICK_SPACING = 60  # For 0.3% fee pools
@@ -29,124 +28,8 @@ class Config:
     EPSILON_END = 0.01
     EPSILON_DECAY = 0.995
 
-# class TechnicalIndicators:
-#     """Calculate technical indicators for state features"""
-    
-#     @staticmethod
-#     def calculate_features(df: pd.DataFrame) -> np.ndarray:
-#         """Calculate all technical indicators from OHLCV data"""
-#         features = []
-        
-#         # Basic price features
-#         features.append(df['open'].values[-1])  # Current open price
-#         features.append(df['high'].values[-1] / df['open'].values[-1])  # High/Open ratio
-#         features.append(df['low'].values[-1] / df['open'].values[-1])   # Low/Open ratio
-#         features.append(df['close'].values[-1] / df['open'].values[-1]) # Close/Open ratio
-#         features.append(df['volume'].values[-1])  # Trading volume
-        
-#         # Technical indicators
-#         close_prices = df['close'].values
-#         high_prices = df['high'].values
-#         low_prices = df['low'].values
-#         volume = df['volume'].values
-        
-#         # DEMA - Double Exponential Moving Average
-#         dema = talib.DEMA(close_prices, timeperiod=14)
-#         features.append(dema[-1] / df['open'].values[-1] if not np.isnan(dema[-1]) else 1.0)
-        
-#         # SAR - Parabolic SAR
-#         sar = talib.SAR(high_prices, low_prices)
-#         features.append(sar[-1] / df['open'].values[-1] if not np.isnan(sar[-1]) else 1.0)
-        
-#         # ADX - Average Directional Movement Index
-#         adx = talib.ADX(high_prices, low_prices, close_prices, timeperiod=14)
-#         features.append(adx[-1] if not np.isnan(adx[-1]) else 50.0)
-        
-#         # APO - Absolute Price Oscillator
-#         apo = talib.APO(close_prices)
-#         features.append(apo[-1] if not np.isnan(apo[-1]) else 0.0)
-        
-#         # AROON - Aroon Oscillator
-#         aroon_down, aroon_up = talib.AROON(high_prices, low_prices, timeperiod=14)
-#         aroon_osc = aroon_up[-1] - aroon_down[-1] if not (np.isnan(aroon_up[-1]) or np.isnan(aroon_down[-1])) else 0.0
-#         features.append(aroon_osc)
-        
-#         # BOP - Balance of Power
-#         bop = talib.BOP(df['open'].values, high_prices, low_prices, close_prices)
-#         features.append(bop[-1] if not np.isnan(bop[-1]) else 0.0)
-        
-#         # CCI - Commodity Channel Index
-#         cci = talib.CCI(high_prices, low_prices, close_prices, timeperiod=14)
-#         features.extend([cci[-1] if not np.isnan(cci[-1]) else 0.0, cci[-2] if len(cci) > 1 and not np.isnan(cci[-2]) else 0.0])
-        
-#         # CMO - Chande Momentum Oscillator
-#         cmo = talib.CMO(close_prices, timeperiod=14)
-#         features.append(cmo[-1] if not np.isnan(cmo[-1]) else 0.0)
-        
-#         # DX - Directional Movement Index
-#         dx = talib.DX(high_prices, low_prices, close_prices, timeperiod=14)
-#         features.append(dx[-1] if not np.isnan(dx[-1]) else 0.0)
-        
-#         # MINUS_DM - Minus Directional Movement
-#         minus_dm = talib.MINUS_DM(high_prices, low_prices, timeperiod=14)
-#         features.append(minus_dm[-1] if not np.isnan(minus_dm[-1]) else 0.0)
-        
-#         # MOM - Momentum
-#         mom = talib.MOM(close_prices, timeperiod=10)
-#         features.append(mom[-1] if not np.isnan(mom[-1]) else 0.0)
-        
-#         # PLUS_DM - Plus Directional Movement
-#         plus_dm = talib.PLUS_DM(high_prices, low_prices, timeperiod=14)
-#         features.append(plus_dm[-1] if not np.isnan(plus_dm[-1]) else 0.0)
-        
-#         # TRIX
-#         trix = talib.TRIX(close_prices, timeperiod=30)
-#         features.append(trix[-1] if not np.isnan(trix[-1]) else 0.0)
-        
-#         # ULTOSC - Ultimate Oscillator
-#         ult_osc = talib.ULTOSC(high_prices, low_prices, close_prices)
-#         features.append(ult_osc[-1] if not np.isnan(ult_osc[-1]) else 50.0)
-        
-#         # Stochastic indicators
-#         slowk, slowd = talib.STOCH(high_prices, low_prices, close_prices)
-#         features.extend([
-#             slowk[-1] if not np.isnan(slowk[-1]) else 50.0,
-#             slowd[-1] if not np.isnan(slowd[-1]) else 50.0,
-#             slowk[-1] - slowd[-1] if not (np.isnan(slowk[-1]) or np.isnan(slowd[-1])) else 0.0
-#         ])
-        
-#         # Fast Stochastic
-#         fastk, fastd = talib.STOCHF(high_prices, low_prices, close_prices)
-#         features.extend([
-#             fastk[-1] if not np.isnan(fastk[-1]) else 50.0,
-#             fastd[-1] if not np.isnan(fastd[-1]) else 50.0,
-#             fastk[-1] - fastd[-1] if not (np.isnan(fastk[-1]) or np.isnan(fastd[-1])) else 0.0
-#         ])
-        
-#         # ATR - Average True Range
-#         atr = talib.ATR(high_prices, low_prices, close_prices, timeperiod=14)
-#         natr = talib.NATR(high_prices, low_prices, close_prices, timeperiod=14)
-#         trange = talib.TRANGE(high_prices, low_prices, close_prices)
-#         features.extend([
-#             natr[-1] if not np.isnan(natr[-1]) else 1.0,
-#             trange[-1] if not np.isnan(trange[-1]) else 0.0
-#         ])
-        
-#         # Hilbert Transform indicators
-#         ht_dcperiod = talib.HT_DCPERIOD(close_prices)
-#         ht_dcphase = talib.HT_DCPHASE(close_prices)
-#         features.extend([
-#             ht_dcperiod[-1] if not np.isnan(ht_dcperiod[-1]) else 15.0,
-#             ht_dcphase[-1] if not np.isnan(ht_dcphase[-1]) else 0.0
-#         ])
-        
-#         return np.array(features, dtype=np.float32)
-
-
 
 class UniswapV3Environment:
-    """Uniswap V3 liquidity provision environment"""
-    
     def __init__(self, data: pd.DataFrame, initial_capital: float = 1000.0, fee_tier: float = 0.003):
         self.data = data.copy()
         self.initial_capital = initial_capital
@@ -165,13 +48,15 @@ class UniswapV3Environment:
         self.position_active = False
         
     def price_to_tick(self, price: float) -> int:
-        """Convert price to tick"""
+        # Convert price to tick
         return int(math.log(price, 1.0001))
     
     def tick_to_price(self, tick: int) -> float:
-        """Convert tick to price"""
+        # Convert tick to price
         return 1.0001 ** tick
     
+
+    # formula 1 
     def calculate_reserves(self, price: float, tick_lower: int, tick_upper: int, liquidity: float) -> Tuple[float, float]:
         """Calculate token reserves for a liquidity position"""
         price_lower = self.tick_to_price(tick_lower)
@@ -195,8 +80,9 @@ class UniswapV3Environment:
             
         return x, y
     
+    # Use in formula 4 and 6 
     def calculate_position_value(self, price: float) -> float:
-        """Calculate current value of liquidity position"""
+        # Calculate current value of liquidity position
         if not self.position_active or self.liquidity_units == 0:
             return 0.0
             
@@ -206,8 +92,10 @@ class UniswapV3Environment:
         x, y = self.calculate_reserves(price, tick_lower, tick_upper, self.liquidity_units)
         return price * x + y
     
+
+    # formula 3 
     def calculate_trading_fee(self, price_from: float, price_to: float) -> float:
-        """Calculate trading fees earned during price movement"""
+        # Calculate trading fees earned during price movement
         if not self.position_active or self.liquidity_units == 0:
             return 0.0
             
@@ -234,8 +122,9 @@ class UniswapV3Environment:
             
         return max(0.0, fee)
     
+    # formula 5 
     def calculate_lvr(self, price_from: float, price_to: float) -> float:
-        """Calculate Loss-Versus-Rebalancing"""
+        # Calculate Loss-Versus-Rebalancing
         if not self.position_active or self.liquidity_units == 0:
             return 0.0
             
@@ -256,30 +145,21 @@ class UniswapV3Environment:
         return lvr
     
     def get_state(self) -> np.ndarray:
-        """Get current state representation"""
-        if self.current_step < 30:  # Need enough history for technical indicators
-            # Return zeros for insufficient history
-            market_features = np.zeros(28, dtype=np.float32)
-        else:
-            # Calculate technical indicators
-            hist_data = self.data.iloc[max(0, self.current_step-100):self.current_step+1]
-            market_features = TechnicalIndicators.calculate_features(hist_data)
-            
-        # Position state
-        cash_normalized = self.cash / self.initial_capital
-        center_tick_normalized = self.liquidity_center / 10000.0  # Normalize tick
-        width_normalized = self.liquidity_width / Config.MAX_WIDTH
-        position_value_normalized = self.liquidity_value / self.initial_capital
+        # Get current state representation
+
+        cash_normalized = self.cash 
+        center_tick_normalized = self.liquidity_center 
+        width_normalized = self.liquidity_width 
+        position_value_normalized = self.liquidity_value 
         
         state = np.concatenate([
-            market_features,
             [cash_normalized, center_tick_normalized, width_normalized, position_value_normalized]
         ])
         
         return state.astype(np.float32)
     
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
-        """Execute one step in the environment"""
+        # Execute one step in the environment
         if self.current_step >= len(self.data) - 1:
             return self.get_state(), 0.0, True, {}
             
@@ -360,7 +240,7 @@ class UniswapV3Environment:
         return self.get_state(), reward, done, info
     
     def reset(self) -> np.ndarray:
-        """Reset environment to initial state"""
+        # Reset environment to initial state
         self.current_step = 0
         self.cash = self.initial_capital
         self.liquidity_value = 0.0
