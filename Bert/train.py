@@ -172,8 +172,20 @@ class Manager(object):
                 batch_instance['mask'] = torch.tensor([seen_des[self.id2rel[label.item()]]['mask'] for label in labels]).to(self.config.device)
 
                 
-                hidden, attention = encoder(instance) # b, dim
-                rep_des, attention_des = encoder(batch_instance, is_des = True) # b, dim
+                hidden= encoder(instance) # b, dim
+                rep_des = encoder(batch_instance, is_des = True) # b, dim
+                # print('---------------------')
+                # print(hidden[0])
+                # print(rep_des[0])
+                # print('---------------------')
+
+                # print('*************************')
+                hidden_aug= encoder(instance) # b, dim
+                rep_des_aug = encoder(batch_instance, is_des = True) # b, dim
+
+                # print(hidden[0])
+                # print(rep_des[0])
+                # print('*************************')
 
                 with torch.no_grad():
                     rep_seen_des = []
@@ -182,7 +194,7 @@ class Manager(object):
                             'ids' : torch.tensor([list_seen_des[i2]['ids']]).to(self.config.device),
                             'mask' : torch.tensor([list_seen_des[i2]['mask']]).to(self.config.device)
                         }
-                        hidden_des, _ = encoder(sample, is_des=True)
+                        hidden_des = encoder(sample, is_des=True)
                         hidden_des = hidden_des.detach().cpu().data
                         rep_seen_des.append(hidden_des)
                     rep_seen_des = torch.cat(rep_seen_des, dim=0)
@@ -204,7 +216,9 @@ class Manager(object):
 
                 loss2 = self.moment.mutual_information_loss_cluster(hidden, rep_des, labels, temperature=args.temperature,relation_2_cluster=relation_2_cluster)  # Recompute loss2
 
-                    
+                loss2_aug = self.moment.mutual_information_loss_cluster(hidden_aug, rep_des_aug, labels, temperature=args.temperature,relation_2_cluster=relation_2_cluster)  # Recompute loss2
+
+
                 cluster_centroids = []
 
                 for label in labels:
@@ -236,13 +250,17 @@ class Manager(object):
                     loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
                     loss3 = triplet(hidden, rep_des,  cluster_centroids) + triplet(hidden, cluster_centroids, nearest_cluster_centroids)
+                    
+                    loss1_aug  = self.moment.contrastive_loss(hidden_aug, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3
+                    loss3_aug  = triplet(hidden_aug, rep_des,  cluster_centroids) + triplet(hidden_aug, cluster_centroids, nearest_cluster_centroids)
+                    loss = args.lambda_1*(loss1+loss1_aug) + args.lambda_2*(loss2+loss2_aug) + args.lambda_3*(loss3+loss3_aug)
 
                 else:
                     loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
+                    loss1_aug  = self.moment.contrastive_loss(hidden_aug, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2  
+                    loss = args.lambda_1*loss1 + args.lambda_2*(loss2+loss2_aug)  
          
                 loss.backward()
                 optimizer.step()
@@ -259,7 +277,7 @@ class Manager(object):
                 else:
                     sys.stdout.write('CurrentTrain: epoch {0:2}, batch {1:5} | loss: {2:2.7f}'.format(i, batch_num, loss.item()) + '\r')
                 sys.stdout.flush() 
-        print('')             
+        print('')               
     
     def train_model_with_distil(self, encoder, encoder_pre, training_data, seen_des, seen_relations, list_seen_des, is_memory=False):
         data_loader = get_data_loader_BERT(self.config, training_data, shuffle=True)
@@ -641,9 +659,11 @@ class Manager(object):
             for rel in current_relations:
                 training_data_initialize += training_data[rel]
             self.moment.init_moment(encoder, training_data_initialize, is_memory=False)
-            encoder_pre = copy.deepcopy(encoder)
+            # encoder_pre = copy.deepcopy(encoder)
             if step>0:
-                self.train_model_with_distil(encoder, encoder_pre, training_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=False)
+                # self.train_model_with_distil(encoder, encoder_pre, training_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=False)
+                self.train_model(encoder, training_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=False)
+
             else:
                 self.train_model(encoder, training_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=False)
 
