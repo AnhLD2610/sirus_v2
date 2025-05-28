@@ -81,7 +81,7 @@ class Manager(object):
         for step, (instance, label, idx) in enumerate(data_loader):
             for k in instance.keys():
                 instance[k] = instance[k].to(self.config.device)
-            hidden, _ = encoder(instance) 
+            hidden = encoder(instance) 
             fea = hidden.detach().cpu().data # (1, H)
             features.append(fea)    
         features = torch.cat(features, dim=0) # (M, H)
@@ -101,7 +101,7 @@ class Manager(object):
         for step, (instance, label, idx) in enumerate(data_loader):
             for k in instance.keys():
                 instance[k] = instance[k].to(self.config.device)
-            hidden, _ = encoder(instance) 
+            hidden = encoder(instance) 
             fea = hidden.detach().cpu().data # (1, H)
             features.append(fea)
 
@@ -172,7 +172,7 @@ class Manager(object):
                 batch_instance['mask'] = torch.tensor([seen_des[self.id2rel[label.item()]]['mask'] for label in labels]).to(self.config.device)
 
                 
-                hidden= encoder(instance) # b, dim
+                hidden = encoder(instance) # b, dim
                 rep_des = encoder(batch_instance, is_des = True) # b, dim
                 # print('---------------------')
                 # print(hidden[0])
@@ -447,7 +447,7 @@ class Manager(object):
         for batch_num, (instance, label, _) in enumerate(test_loader):
             for k in instance.keys():
                 instance[k] = instance[k].to(self.config.device)
-            hidden, _ = encoder(instance)
+            hidden = encoder(instance)
             fea = hidden.cpu().data # place in cpu to eval
             logits = -self._edist(fea, seen_proto) # (B, N) ;N is the number of seen relations
 
@@ -490,7 +490,7 @@ class Manager(object):
             for k in instance.keys():
                 instance[k] = instance[k].to(self.config.device)
             with torch.no_grad():
-                hidden, _ = encoder(instance)
+                hidden = encoder(instance)
             fea = hidden.cpu().data  # place in cpu to eval
             # logits = -self._edist(fea, seen_proto)  # (B, N) ;N is the number of seen relations
             logits = self._cosine_similarity(fea, seen_proto)  # (B, N)
@@ -709,7 +709,7 @@ class Manager(object):
                         'ids' : torch.tensor([list_seen_des[i]['ids']]).to(self.config.device),
                         'mask' : torch.tensor([list_seen_des[i]['mask']]).to(self.config.device)
                     }
-                    hidden, _ = encoder(sample, is_des=True)
+                    hidden = encoder(sample, is_des=True)
                     hidden = hidden.detach().cpu().data
                     rep_des.append(hidden)
                 rep_des = torch.cat(rep_des, dim=0)
