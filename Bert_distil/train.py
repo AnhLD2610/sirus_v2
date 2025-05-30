@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore")
 
 from sampler import data_sampler_CFRL
 from data_loader import get_data_loader_BERT
-from utils import Moment, gen_data
+from utils import Moment
 from encoder import EncodingModel
 # import wandb
 import copy
@@ -42,19 +42,6 @@ class Manager(object):
             dist.append(torch.unsqueeze(dist_i, 0)) # (N) --> (1,N)
         dist = torch.cat(dist, 0) # (B, N)
         return dist
-    # def _cosine_similarity(self, x1, x2):
-    #     '''
-    #     input: x1 (B, H), x2 (N, H) ; N is the number of relations
-    #     return: (B, N)
-    #     '''
-    #     b = x1.size()[0]
-    #     cos = nn.CosineSimilarity(dim=1)
-    #     sim = []
-    #     for i in range(b):
-    #         sim_i = cos(x2, x1[i])
-    #         sim.append(torch.unsqueeze(sim_i, 0))
-    #     sim = torch.cat(sim, 0)
-    #     return sim
     
     def _cosine_similarity(self, x1, x2):
 
@@ -65,6 +52,23 @@ class Manager(object):
 
         return sim
 
+    # def _cosine_similarity(self, x1, x2):
+    #     '''
+    #     input: x1 (B, H), x2 (N, H) ; N is the number of relations
+    #     return: (B, N)
+    #     '''
+    #     print(x1.shape) # torch.Size([16, 768])
+    #     print(x2.shape) # torch.Size([10, 768])
+ 
+    #     b = x1.size()[0]
+    #     cos = nn.CosineSimilarity(dim=1)
+    #     sim = []
+    #     for i in range(b):
+    #         sim_i = cos(x2, x1[i])
+    #         sim.append(torch.unsqueeze(sim_i, 0))
+    #     sim = torch.cat(sim, 0)
+    #     return sim
+    
 
     def get_memory_proto(self, encoder, dataset):
         '''
@@ -77,7 +81,7 @@ class Manager(object):
         for step, (instance, label, idx) in enumerate(data_loader):
             for k in instance.keys():
                 instance[k] = instance[k].to(self.config.device)
-            hidden, _ = encoder(instance) 
+            hidden = encoder(instance) 
             fea = hidden.detach().cpu().data # (1, H)
             features.append(fea)    
         features = torch.cat(features, dim=0) # (M, H)
@@ -97,7 +101,7 @@ class Manager(object):
         for step, (instance, label, idx) in enumerate(data_loader):
             for k in instance.keys():
                 instance[k] = instance[k].to(self.config.device)
-            hidden, _ = encoder(instance) 
+            hidden = encoder(instance) 
             fea = hidden.detach().cpu().data # (1, H)
             features.append(fea)
 
@@ -168,8 +172,32 @@ class Manager(object):
                 batch_instance['mask'] = torch.tensor([seen_des[self.id2rel[label.item()]]['mask'] for label in labels]).to(self.config.device)
 
                 
-                hidden, _ = encoder(instance) # b, dim
-                rep_des, _ = encoder(batch_instance, is_des = True) # b, dim
+                hidden = encoder(instance) # b, dim
+                rep_des = encoder(batch_instance, is_des = True) # b, dim
+
+
+
+                means = []
+                for i, lab in enumerate(labels):
+                    mask = (labels == lab)                    # which batch‐items share the same label
+                    mean_hidden = hidden[mask].mean(dim=0)    # mean over that subset
+                    means.append(mean_hidden)
+                means = torch.stack(means, dim=0)             # (batch_size, dim)
+
+                # 2) draw noise and form synthetic samples
+                noise     = torch.randn_like(means)           # N(0,1) noise per sample
+                rep_noisy = means + noise                     # (batch_size, dim)
+                rep_noisy = rep_noisy.to(self.config.device)
+
+                rep_noisy_norm = F.normalize(rep_noisy, p=2, dim=1)  # (b, dim)
+                rep_des_norm   = F.normalize(rep_des,   p=2, dim=1)  # (b, dim)
+                # 3) compute mse loss to description embeddings
+                cos_sim = F.cosine_similarity(rep_noisy_norm, rep_des_norm, dim=1)  # (b,)
+
+# 3) turn into a loss (1 − cosine) and average
+                loss4 = (1.0 - cos_sim).mean()
+                # get mean all sample that have the same label in this batch to get mean representation then sample by N(0,1)
+                # after that give a loss minimize the loss4 is the new sample and the description rep_des
 
                 with torch.no_grad():
                     rep_seen_des = []
@@ -178,7 +206,7 @@ class Manager(object):
                             'ids' : torch.tensor([list_seen_des[i2]['ids']]).to(self.config.device),
                             'mask' : torch.tensor([list_seen_des[i2]['mask']]).to(self.config.device)
                         }
-                        hidden_des, _ = encoder(sample, is_des=True)
+                        hidden_des = encoder(sample, is_des=True)
                         hidden_des = hidden_des.detach().cpu().data
                         rep_seen_des.append(hidden_des)
                     rep_seen_des = torch.cat(rep_seen_des, dim=0)
@@ -200,7 +228,8 @@ class Manager(object):
 
                 loss2 = self.moment.mutual_information_loss_cluster(hidden, rep_des, labels, temperature=args.temperature,relation_2_cluster=relation_2_cluster)  # Recompute loss2
 
-                    
+
+
                 cluster_centroids = []
 
                 for label in labels:
@@ -232,13 +261,12 @@ class Manager(object):
                     loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
                     loss3 = triplet(hidden, rep_des,  cluster_centroids) + triplet(hidden, cluster_centroids, nearest_cluster_centroids)
-
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + loss4
 
                 else:
                     loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2  
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + loss4
          
                 loss.backward()
                 optimizer.step()
@@ -255,9 +283,8 @@ class Manager(object):
                 else:
                     sys.stdout.write('CurrentTrain: epoch {0:2}, batch {1:5} | loss: {2:2.7f}'.format(i, batch_num, loss.item()) + '\r')
                 sys.stdout.flush() 
-        print('')             
-
-
+        print('')               
+    
     def train_model_with_distil(self, encoder, encoder_pre, training_data, seen_des, seen_relations, list_seen_des, is_memory=False):
         data_loader = get_data_loader_BERT(self.config, training_data, shuffle=True)
 
@@ -294,35 +321,36 @@ class Manager(object):
 
                 # loss4 = self.moment.distillation_loss_att(attention_des_pre, attention_des , 10) + self.moment.distillation_loss_att(attention_pre, attention, 10)
              
-                hidden_pre = F.normalize(hidden_pre, dim=1)  
-                rep_des_pre = F.normalize(rep_des_pre, dim=1) 
-                sim  = F.cosine_similarity(hidden_pre, rep_des_pre, dim=1)  # [B]
-                mask = (sim > 0.8)                                     # [B], torch.bool or byte tensor
+                # hidden_pre = F.normalize(hidden_pre, dim=1)  
+                # rep_des_pre = F.normalize(rep_des_pre, dim=1) 
+                # sim  = F.cosine_similarity(hidden_pre, rep_des_pre, dim=1)  # [B]
+                # mask = (sim > 0.8)                                     # [B], torch.bool or byte tensor
+                # # mask = sim                               # [B], torch.bool or byte tensor
 
-                loss_att = self.moment.distillation_loss_att(
-                    attention_teacher_layers=attention_pre, 
-                    attention_student_layers=attention, 
-                    top_k_val=args.top_k,
-                    mask=mask
-                )  
+                # loss_att = self.moment.distillation_loss_att(
+                #     attention_teacher_layers=attention_pre, 
+                #     attention_student_layers=attention, 
+                #     top_k_val=args.top_k,
+                #     mask=mask
+                # )  
 
-                loss_att_des = self.moment.distillation_loss_att(
-                    attention_teacher_layers=attention_des_pre, 
-                    attention_student_layers=attention_des, 
-                    top_k_val=args.top_k,
-                    mask=mask
-                )  
-                loss4 = loss_att + loss_att_des
+                # loss_att_des = self.moment.distillation_loss_att(
+                #     attention_teacher_layers=attention_des_pre, 
+                #     attention_student_layers=attention_des, 
+                #     top_k_val=args.top_k,
+                #     mask=mask
+                # )  
+                # loss4 = loss_att + loss_att_des
 
                 # loss_hid = self.moment.distillation_loss_hidden(
                 #         hidden_teacher = hidden_pre,
                 #         hidden_student = hidden,
-                #         # mask = mask
+                #         mask = mask
                 # )
                 # loss_hid_des = self.moment.distillation_loss_hidden(
                 #     hidden_teacher = rep_des_pre,
                 #     hidden_student = rep_des,
-                #     # mask = mask
+                #     mask = mask
                 # )
                 # loss4 = loss_hid + loss_hid_des
 
@@ -390,13 +418,12 @@ class Manager(object):
 
                     loss3 = triplet(hidden, rep_des,  cluster_centroids) + triplet(hidden, cluster_centroids, nearest_cluster_centroids)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + loss4
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 
                     # print(loss4)
                 else:
                     loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2  + loss4 
-
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2  
                     # print(loss4)
          
                 loss.backward()
@@ -416,8 +443,6 @@ class Manager(object):
                 sys.stdout.flush() 
         print('')     
 
-
-
     def eval_encoder_proto(self, encoder, seen_proto, seen_relid, test_data):
         batch_size = 16
         test_loader = get_data_loader_BERT(self.config, test_data, False, False, batch_size)
@@ -428,7 +453,7 @@ class Manager(object):
         for batch_num, (instance, label, _) in enumerate(test_loader):
             for k in instance.keys():
                 instance[k] = instance[k].to(self.config.device)
-            hidden, _ = encoder(instance)
+            hidden = encoder(instance)
             fea = hidden.cpu().data # place in cpu to eval
             logits = -self._edist(fea, seen_proto) # (B, N) ;N is the number of seen relations
 
@@ -471,7 +496,7 @@ class Manager(object):
             for k in instance.keys():
                 instance[k] = instance[k].to(self.config.device)
             with torch.no_grad():
-                hidden, _ = encoder(instance)
+                hidden = encoder(instance)
             fea = hidden.cpu().data  # place in cpu to eval
             # logits = -self._edist(fea, seen_proto)  # (B, N) ;N is the number of seen relations
             logits = self._cosine_similarity(fea, seen_proto)  # (B, N)
@@ -611,41 +636,12 @@ class Manager(object):
             # Initialization
             self.moment = Moment(self.config)
 
-            # Data gen
-            if step>0 and self.config.gen == 1:
-                for rel in current_relations:
-                    memory_samples[rel], _ = self.select_memory(encoder, training_data[rel])
-                gen_text = []
-                for rel in current_relations:
-                    for sample in memory_samples[rel]:
-                        sample_text = self._get_sample_text(self.config.training_data, sample['index'])
-                        gen_samples = gen_data(self.r2desc, self.rel2id, sample_text, self.config.num_gen, self.config.gpt_temp, self.config.key)
-                        gen_text += gen_samples
-                for sample in gen_text:
-                    data_generation.append(sampler.tokenize(sample))
-                    
-            # Train memory
-            # if step > 0:
-            #     memory_data_initialize = []
-            #     for rel in seen_relations:
-            #         memory_data_initialize += memory_samples[rel]
-            #     memory_data_initialize += data_generation
-            #     self.moment.init_moment(encoder, memory_data_initialize, is_memory=True) 
-            #     self.train_model(encoder, memory_data_initialize, is_memory=True)
-            
             # Train current task
             training_data_initialize = []
 
-
-            if step > 0:
-                memory_data_initialize = []
-                for rel in seen_relations:
-                    memory_data_initialize += memory_samples[rel]
-                memory_data_initialize += data_generation
-                # self.moment.init_moment(encoder, memory_data_initialize, is_memory=True) 
-                # self.train_model(encoder, memory_data_initialize, is_memory=True)
-                
-            training_data_initialize += data_generation
+            for rel in current_relations:
+                memory_samples[rel], _ = self.select_memory(encoder, training_data[rel])
+            
             if step > 0:
                 relations = list(set(seen_relations) - set(current_relations))
                 for rel in relations:
@@ -653,18 +649,45 @@ class Manager(object):
 
             for rel in current_relations:
                 training_data_initialize += training_data[rel]
-            
-            encoder_pre = copy.deepcopy(encoder)
             self.moment.init_moment(encoder, training_data_initialize, is_memory=False)
+            # encoder_pre = copy.deepcopy(encoder)
             if step>0:
-                self.train_model_with_distil(encoder, encoder_pre, training_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=False)
+                # self.train_model_with_distil(encoder, encoder_pre, training_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=False)
+                self.train_model(encoder, training_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=False)
+
             else:
                 self.train_model(encoder, training_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=False)
 
             # Select memory samples
-            for rel in current_relations:
-                memory_samples[rel], _ = self.select_memory(encoder, training_data[rel])
-                    
+            # for rel in current_relations:
+            #     memory_samples[rel], _ = self.select_memory(encoder, training_data[rel])
+            
+            # if step > 0:
+            #     memory_data_initialize = []
+            #     for rel in seen_relations:
+            #         # try: 
+            #         if rel in current_relations:
+            #             continue
+            #         memory_data_initialize += memory_samples[rel]
+            #         # except KeyError:
+            #         #     continue
+            #     memory_data_initialize += data_generation
+            #     self.moment.init_moment(encoder, memory_data_initialize, is_memory=True) 
+            #     self.train_model_with_distil(encoder, encoder_pre, memory_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=True)
+
+            # Select memory samples
+            # for rel in current_relations:
+            #     memory_samples[rel], _ = self.select_memory(encoder, training_data[rel])
+
+            # if step > 0:
+            #     memory_data_initialize = []
+            #     for rel in seen_relations:
+            #         memory_data_initialize += memory_samples[rel]
+            #     memory_data_initialize += data_generation
+            #     self.moment.init_moment(encoder, memory_data_initialize, is_memory=True) 
+            #     self.train_model(encoder, memory_data_initialize, seen_des, seen_relations, list_seen_des, is_memory=True)
+
+
             # Update proto
             seen_proto = []  
             for rel in seen_relations:
@@ -692,7 +715,7 @@ class Manager(object):
                         'ids' : torch.tensor([list_seen_des[i]['ids']]).to(self.config.device),
                         'mask' : torch.tensor([list_seen_des[i]['mask']]).to(self.config.device)
                     }
-                    hidden, _ = encoder(sample, is_des=True)
+                    hidden = encoder(sample, is_des=True)
                     hidden = hidden.detach().cpu().data
                     rep_des.append(hidden)
                 rep_des = torch.cat(rep_des, dim=0)
@@ -735,13 +758,12 @@ if __name__ == '__main__':
     parser.add_argument("--task_name", default="FewRel", type=str)
     parser.add_argument("--num_k", default=5, type=int)
     parser.add_argument("--num_gen", default=2, type=int)
-    parser.add_argument("--lambda_1", default=1.0, type=float)
-    parser.add_argument("--lambda_2", default=1.0, type=float)
+    parser.add_argument("--lambda_1", default=1, type=float)
+    parser.add_argument("--lambda_2", default=1, type=float)
     parser.add_argument("--lambda_3", default=0.25, type=float)
-    parser.add_argument("--temperature", default=0.01, type=float)    
-    parser.add_argument("--distance_threshold", default=0.1, type=float)  
+    parser.add_argument("--temperature", default=0.01, type=float)
+    parser.add_argument("--distance_threshold", default=0.1, type=float)
     parser.add_argument("--top_k", default=10, type=int)
-
     # Tacred
     # parser.add_argument("--task_name", default="Tacred", type=str)
     # parser.add_argument("--num_k", default=5, type=int)
@@ -828,4 +850,6 @@ if __name__ == '__main__':
     accs2 = np.array(aac_list2)
     ave2 = np.mean(accs2, axis=0)
     print('his_acc rrf mean: ', np.around(ave2, 4))
+    
+
     
