@@ -184,8 +184,17 @@ class Manager(object):
                     means.append(mean_hidden)
                 means = torch.stack(means, dim=0)             # (batch_size, dim)
 
+
+                vars = []
+                for i, lab in enumerate(labels):
+                    subset = hidden[labels==lab]        # (n_lab, dim)
+                    vars.append(subset.var(dim=0))      # (dim,)
+                vars = torch.stack(vars, dim=0)         # (b, dim)
+
+                # sample noise ∼ N(0, vars)
+                noise = torch.randn_like(vars) * torch.sqrt(vars + 1e-6)
                 # 2) draw noise and form synthetic samples
-                noise     = torch.randn_like(means)           # N(0,1) noise per sample
+                # noise     = torch.randn_like(means)           # N(0,1) noise per sample
                 rep_noisy = means + noise                     # (batch_size, dim)
                 rep_noisy = rep_noisy.to(self.config.device)
 
@@ -258,12 +267,12 @@ class Manager(object):
                     loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
                     loss3 = triplet(hidden, rep_des,  cluster_centroids) + triplet(hidden, cluster_centroids, nearest_cluster_centroids)
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + loss4
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + 0.1*loss4
 
                 else:
                     loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + loss4
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + 0.1*loss4
          
                 loss.backward()
                 optimizer.step()
