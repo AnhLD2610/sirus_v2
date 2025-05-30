@@ -191,14 +191,11 @@ class Manager(object):
 
                 rep_noisy_norm = F.normalize(rep_noisy, p=2, dim=1)  # (b, dim)
                 rep_des_norm   = F.normalize(rep_des,   p=2, dim=1)  # (b, dim)
-                # 3) compute mse loss to description embeddings
+
                 cos_sim = F.cosine_similarity(rep_noisy_norm, rep_des_norm, dim=1)  # (b,)
 
-# 3) turn into a loss (1 − cosine) and average
                 loss4 = (1.0 - cos_sim).mean()
-                # get mean all sample that have the same label in this batch to get mean representation then sample by N(0,1)
-                # after that give a loss minimize the loss4 is the new sample and the description rep_des
-
+                
                 with torch.no_grad():
                     rep_seen_des = []
                     for i2 in range(len(list_seen_des)):

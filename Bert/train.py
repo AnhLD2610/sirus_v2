@@ -174,19 +174,28 @@ class Manager(object):
                 
                 hidden = encoder(instance) # b, dim
                 rep_des = encoder(batch_instance, is_des = True) # b, dim
-                # print('---------------------')
-                # print(hidden[0])
-                # print(rep_des[0])
-                # print('---------------------')
 
-                # print('*************************')
-                hidden_aug= encoder(instance) # b, dim
-                rep_des_aug = encoder(batch_instance, is_des = True) # b, dim
 
-                # print(hidden[0])
-                # print(rep_des[0])
-                # print('*************************')
 
+                means = []
+                for i, lab in enumerate(labels):
+                    mask = (labels == lab)                    # which batch‐items share the same label
+                    mean_hidden = hidden[mask].mean(dim=0)    # mean over that subset
+                    means.append(mean_hidden)
+                means = torch.stack(means, dim=0)             # (batch_size, dim)
+
+                # 2) draw noise and form synthetic samples
+                noise     = torch.randn_like(means)           # N(0,1) noise per sample
+                rep_noisy = means + noise                     # (batch_size, dim)
+                rep_noisy = rep_noisy.to(self.config.device)
+
+                rep_noisy_norm = F.normalize(rep_noisy, p=2, dim=1)  # (b, dim)
+                rep_des_norm   = F.normalize(rep_des,   p=2, dim=1)  # (b, dim)
+
+                cos_sim = F.cosine_similarity(rep_noisy_norm, rep_des_norm, dim=1)  # (b,)
+
+                loss4 = (1.0 - cos_sim).mean()
+                
                 with torch.no_grad():
                     rep_seen_des = []
                     for i2 in range(len(list_seen_des)):
@@ -216,7 +225,6 @@ class Manager(object):
 
                 loss2 = self.moment.mutual_information_loss_cluster(hidden, rep_des, labels, temperature=args.temperature,relation_2_cluster=relation_2_cluster)  # Recompute loss2
 
-                loss2_aug = self.moment.mutual_information_loss_cluster(hidden_aug, rep_des_aug, labels, temperature=args.temperature,relation_2_cluster=relation_2_cluster)  # Recompute loss2
 
 
                 cluster_centroids = []
@@ -250,17 +258,12 @@ class Manager(object):
                     loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
                     loss3 = triplet(hidden, rep_des,  cluster_centroids) + triplet(hidden, cluster_centroids, nearest_cluster_centroids)
-                    
-                    loss1_aug  = self.moment.contrastive_loss(hidden_aug, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
-
-                    loss3_aug  = triplet(hidden_aug, rep_des,  cluster_centroids) + triplet(hidden_aug, cluster_centroids, nearest_cluster_centroids)
-                    loss = args.lambda_1*(loss1+loss1_aug) + args.lambda_2*(loss2+loss2_aug) + args.lambda_3*(loss3+loss3_aug)
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + loss4
 
                 else:
                     loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
-                    loss1_aug  = self.moment.contrastive_loss(hidden_aug, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*(loss2+loss2_aug)  
+                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + loss4
          
                 loss.backward()
                 optimizer.step()
