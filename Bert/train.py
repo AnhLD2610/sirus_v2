@@ -178,7 +178,7 @@ class Manager(object):
 
 
                 means = []
-                for i, lab in enumerate(labels):
+                for i2, lab in enumerate(labels):
                     mask = (labels == lab)                    # which batch‐items share the same label
                     mean_hidden = hidden[mask].mean(dim=0)    # mean over that subset
                     means.append(mean_hidden)
