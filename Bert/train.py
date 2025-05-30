@@ -28,6 +28,8 @@ class Manager(object):
     def __init__(self, config) -> None:
         super().__init__()
         self.config = config
+
+
         
     def _edist(self, x1, x2):
         '''
@@ -174,37 +176,9 @@ class Manager(object):
                 
                 hidden = encoder(instance) # b, dim
                 rep_des = encoder(batch_instance, is_des = True) # b, dim
+                rep_des_2 = encoder(batch_instance, is_des = True) # b, dim
 
 
-
-                means = []
-                for i2, lab in enumerate(labels):
-                    mask = (labels == lab)                    # which batch‐items share the same label
-                    mean_hidden = hidden[mask].mean(dim=0)    # mean over that subset
-                    means.append(mean_hidden)
-                means = torch.stack(means, dim=0)             # (batch_size, dim)
-
-
-                vars = []
-                for i, lab in enumerate(labels):
-                    subset = hidden[labels==lab]        # (n_lab, dim)
-                    vars.append(subset.var(dim=0))      # (dim,)
-                vars = torch.stack(vars, dim=0)         # (b, dim)
-
-                # sample noise ∼ N(0, vars)
-                noise = torch.randn_like(vars) * torch.sqrt(vars + 1e-6)
-                # 2) draw noise and form synthetic samples
-                # noise     = torch.randn_like(means)           # N(0,1) noise per sample
-                rep_noisy = means + noise                     # (batch_size, dim)
-                rep_noisy = rep_noisy.to(self.config.device)
-
-                rep_noisy_norm = F.normalize(rep_noisy, p=2, dim=1)  # (b, dim)
-                rep_des_norm   = F.normalize(rep_des,   p=2, dim=1)  # (b, dim)
-
-                cos_sim = F.cosine_similarity(rep_noisy_norm, rep_des_norm, dim=1)  # (b,)
-
-                loss4 = (1.0 - cos_sim).mean()
-                
                 with torch.no_grad():
                     rep_seen_des = []
                     for i2 in range(len(list_seen_des)):
@@ -233,8 +207,7 @@ class Manager(object):
                     relation_2_cluster[self.rel2id[seen_relations[i1]]] = clusters[i1]
 
                 loss2 = self.moment.mutual_information_loss_cluster(hidden, rep_des, labels, temperature=args.temperature,relation_2_cluster=relation_2_cluster)  # Recompute loss2
-
-
+                loss4 = self.moment.mutual_information_loss_cluster(rep_des, rep_des_2, labels, temperature=args.temperature,relation_2_cluster=relation_2_cluster)  # Recompute loss2
 
                 cluster_centroids = []
 
@@ -262,17 +235,19 @@ class Manager(object):
                     nearest_cluster_centroids.append(top2_centroids)
 
                 nearest_cluster_centroids = torch.stack(nearest_cluster_centroids, dim = 0).to(self.config.device)
+                loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
+
 
                 if flag == 0:
-                    loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
 
                     loss3 = triplet(hidden, rep_des,  cluster_centroids) + triplet(hidden, cluster_centroids, nearest_cluster_centroids)
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + args.lambda_3*loss3 + 0.1*loss4
+
+                    loss = args.lambda_1*(loss1) + args.lambda_2*(loss2) + args.lambda_3*(loss3) + loss4
 
                 else:
-                    loss1 = self.moment.contrastive_loss(hidden, labels, is_memory, des =rep_des, relation_2_cluster = relation_2_cluster)
+            
 
-                    loss = args.lambda_1*loss1 + args.lambda_2*loss2 + 0.1*loss4
+                    loss = args.lambda_1*(loss1) + args.lambda_2*(loss2) + loss4
          
                 loss.backward()
                 optimizer.step()
