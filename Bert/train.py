@@ -206,8 +206,8 @@ class Manager(object):
                 for i1 in range(len(seen_relations)):
                     relation_2_cluster[self.rel2id[seen_relations[i1]]] = clusters[i1]
 
-                loss2 = self.moment.mutual_information_loss_cluster(hidden, rep_des, labels, temperature=args.temperature,relation_2_cluster=relation_2_cluster)  # Recompute loss2
-                loss4 = self.moment.mutual_information_loss_cluster(rep_des, rep_des_2, labels, temperature=args.temperature,relation_2_cluster=relation_2_cluster)  # Recompute loss2
+                loss2 = self.moment.mutual_information_loss_cluster(hidden, rep_des, labels, temperature=args.temperature,relation_2_cluster=relation_2_cluster)  
+                loss4 = self.moment.mutual_information_loss_cluster(rep_des, rep_des_2, labels, temperature=args.temperature,relation_2_cluster=relation_2_cluster)  
 
                 cluster_centroids = []
 
